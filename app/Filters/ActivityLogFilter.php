@@ -29,6 +29,25 @@ class ActivityLogFilter implements FilterInterface
         'admin/permessi/store'  => ['azione' => 'create', 'modulo' => 'permessi'],
         'admin/permessi/update' => ['azione' => 'update', 'modulo' => 'permessi'],
         'admin/permessi/delete' => ['azione' => 'delete', 'modulo' => 'permessi'],
+        'admin/prodotti/store'  => ['azione' => 'create', 'modulo' => 'prodotti'],
+        'admin/prodotti/update' => ['azione' => 'update', 'modulo' => 'prodotti'],
+        'admin/prodotti/delete' => ['azione' => 'delete', 'modulo' => 'prodotti'],
+        'admin/versioni/store'  => ['azione' => 'create', 'modulo' => 'versioni'],
+        'admin/versioni/update' => ['azione' => 'update', 'modulo' => 'versioni'],
+        'admin/versioni/delete' => ['azione' => 'delete', 'modulo' => 'versioni'],
+        'admin/suite/store'     => ['azione' => 'create', 'modulo' => 'suite'],
+        'admin/suite/update'    => ['azione' => 'update', 'modulo' => 'suite'],
+        'admin/suite/delete'    => ['azione' => 'delete', 'modulo' => 'suite'],
+        'admin/casi/store'      => ['azione' => 'create', 'modulo' => 'casi'],
+        'admin/casi/update'     => ['azione' => 'update', 'modulo' => 'casi'],
+        'admin/casi/delete'     => ['azione' => 'delete', 'modulo' => 'casi'],
+        'admin/piani/store'     => ['azione' => 'create', 'modulo' => 'piani'],
+        'admin/piani/update'    => ['azione' => 'update', 'modulo' => 'piani'],
+        'admin/piani/delete'    => ['azione' => 'delete', 'modulo' => 'piani'],
+        'admin/piani/chiudi'    => ['azione' => 'update', 'modulo' => 'piani'],
+        'admin/esecuzioni/registra' => ['azione' => 'create', 'modulo' => 'esecuzioni'],
+        'admin/esecuzioni/modifica' => ['azione' => 'update', 'modulo' => 'esecuzioni'],
+        'admin/bug/update'      => ['azione' => 'update', 'modulo' => 'bug'],
     ];
 
     private const ETICHETTE_AZIONE = [
@@ -38,7 +57,7 @@ class ActivityLogFilter implements FilterInterface
     ];
 
     /** Campi POST candidati a descrivere l'entita' coinvolta, in ordine di preferenza. */
-    private const CAMPI_DESCRITTIVI = ['nome', 'chiave', 'email'];
+    private const CAMPI_DESCRITTIVI = ['nome', 'chiave', 'email', 'titolo', 'esito', 'stato'];
 
     public function before(RequestInterface $request, $arguments = null)
     {

@@ -211,5 +211,16 @@ const AdminCRUD = (function () {
         return table;
     }
 
-    return { initModule, csrfHeaders, showAlert, infoPopoverHtml };
+    /**
+     * POST generico per le pagine non-CRUD (esecuzione dei test, chiusura piano):
+     * allega il token CSRF corrente e lo aggiorna dalla risposta, cosi' piu' azioni
+     * consecutive nella stessa pagina non incontrano un token scaduto.
+     */
+    function post(url, body) {
+        return fetch(url, { method: 'POST', headers: csrfHeaders(), body })
+            .then(trackTokenFrom)
+            .then((res) => res.json().then((json) => ({ status: res.status, json })));
+    }
+
+    return { initModule, csrfHeaders, showAlert, infoPopoverHtml, post, showFormErrors, clearFormErrors };
 })();

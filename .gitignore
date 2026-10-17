@@ -60,7 +60,7 @@ Vagrantfile
 /writable/uploads/*
 !/writable/uploads/index.html
 
-/writable/database.db
+/writable/database.sqlite
 
 /writable/debugbar/*
 !/writable/debugbar/index.html

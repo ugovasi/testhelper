@@ -90,5 +90,8 @@ class RbacSeeder extends Seeder
             'created_at'     => date('Y-m-d H:i:s'),
             'updated_at'     => date('Y-m-d H:i:s'),
         ]);
+
+        // Permessi e ruoli della gestione piani di test (Amministratore compreso).
+        $this->call(GestioneTestSeeder::class);
     }
 }

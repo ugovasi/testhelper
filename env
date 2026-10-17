@@ -29,7 +29,7 @@
 #--------------------------------------------------------------------
 # DATABASE
 #--------------------------------------------------------------------
-database.default.database = database.db
+database.default.database = database.sqlite
 database.default.DBDriver = SQLite3
 database.default.DBPrefix =
 # database.default.hostname = localhost

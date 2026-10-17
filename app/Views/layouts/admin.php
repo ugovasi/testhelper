@@ -11,6 +11,33 @@
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
     <link rel="stylesheet" href="https://cdn.datatables.net/2.0.8/css/dataTables.bootstrap5.min.css">
 
+    <style>
+        /* Voci dei sottomenu rientrate rispetto alla sezione che le contiene. */
+        .app-sidebar .nav-treeview > .nav-item > .nav-link { padding-left: 2rem; }
+
+        /* Layout compatto: meno spazio verticale e font leggermente ridotto. */
+        body { font-size: .875rem; }
+        .app-header .nav-link { padding-top: .35rem; padding-bottom: .35rem; }
+        .app-content-header { padding: .5rem 0; }
+        .app-content-header h3 { font-size: 1.25rem; }
+        .app-content { padding-bottom: .5rem; }
+        .app-sidebar .sidebar-brand { height: 2.9rem; }
+        .app-sidebar .nav-link { padding-top: .35rem; padding-bottom: .35rem; }
+        .card { margin-bottom: .75rem; }
+        .card-header { padding: .5rem .75rem; }
+        .card-header h5, .card-header h6 { font-size: 1rem; }
+        .card-body { padding: .75rem; }
+        .table > :not(caption) > * > * { padding: .3rem .5rem; vertical-align: middle; }
+        .form-label { margin-bottom: .2rem; }
+        .form-control, .form-select { padding-top: .3rem; padding-bottom: .3rem; font-size: .875rem; }
+        .modal-header, .modal-footer { padding: .6rem .9rem; }
+        .modal-body { padding: .9rem; }
+        .alert { padding: .5rem .75rem; margin-bottom: .6rem; }
+        .app-footer { padding: .4rem 1rem; }
+        div.dt-container .dt-layout-row { margin: .25rem 0; }
+        div.dt-container .dt-search input, div.dt-container .dt-length select { padding: .15rem .4rem; }
+    </style>
+
     <?= $this->renderSection('styles') ?>
 </head>
 <body class="layout-fixed sidebar-expand-lg bg-body-tertiary">

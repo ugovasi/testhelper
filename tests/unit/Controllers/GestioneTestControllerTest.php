@@ -1,0 +1,425 @@
+<?php
+
+use App\Database\Seeds\GestioneTestSeeder;
+use App\Libraries\PianoAvanzamento;
+use CodeIgniter\Test\CIUnitTestCase;
+use CodeIgniter\Test\DatabaseTestTrait;
+use CodeIgniter\Test\FeatureTestTrait;
+use Config\Services;
+use Tests\Support\Libraries\CreaFixture;
+
+/**
+ * Flussi HTTP della gestione piani di test: CRUD della libreria, creazione del piano,
+ * esecuzione, gestione bug lato sviluppatore e permessi.
+ *
+ * @internal
+ */
+final class GestioneTestControllerTest extends CIUnitTestCase
+{
+    use DatabaseTestTrait;
+    use FeatureTestTrait;
+    use CreaFixture;
+
+    protected $refresh   = true;
+    protected $namespace = 'App';
+
+    private function csrf(): array
+    {
+        return [Services::security()->getTokenName() => csrf_hash()];
+    }
+
+    private function ajax(): array
+    {
+        return ['X-Requested-With' => 'XMLHttpRequest', 'X-CSRF-TOKEN' => csrf_hash()];
+    }
+
+    /** @param string[] $permessi */
+    private function come(int $utenteId, array $permessi)
+    {
+        return $this->withSession([
+            'logged_in' => true, 'user_id' => $utenteId, 'nome' => 'Marta', 'email' => 'marta@example.com', 'permessi' => $permessi,
+        ])->withHeaders($this->ajax());
+    }
+
+    private const TUTTI = [
+        'prodotti.view', 'prodotti.create', 'prodotti.edit', 'prodotti.delete',
+        'casi.view', 'casi.create', 'casi.edit', 'casi.delete',
+        'piani.view', 'piani.create', 'piani.edit', 'piani.delete',
+        'esecuzioni.view', 'esecuzioni.create', 'bug.view', 'bug.update',
+    ];
+
+    public function testLibreriaProdottoSuiteCasoConPassaggi(): void
+    {
+        $f = $this->creaPianoConUnCaso();
+
+        $this->come($f['utente'], self::TUTTI)->post('admin/prodotti/store', ['nome' => 'AltroProdotto', 'attivo' => '1'] + $this->csrf())
+            ->assertJSONFragment(['success' => true]);
+        $prodottoId = (int) db_connect()->table('prodotti')->where('nome', 'AltroProdotto')->get()->getRow()->id;
+        $this->seeInDatabase('prodotti', ['nome' => 'AltroProdotto', 'created_by' => $f['utente'], 'attivo' => 1]);
+
+        $this->come($f['utente'], self::TUTTI)->post('admin/suite/store', ['prodotto_id' => $prodottoId, 'nome' => 'Login'] + $this->csrf())
+            ->assertJSONFragment(['success' => true]);
+        $suiteId = (int) db_connect()->table('suite')->where('nome', 'Login')->get()->getRow()->id;
+
+        $this->come($f['utente'], self::TUTTI)->post('admin/casi/store', [
+            'suite_id' => $suiteId, 'titolo' => 'Login valido', 'priorita' => 'alta',
+            'passaggi' => [
+                ['id' => '', 'azione' => 'Apri la pagina', 'risultato_atteso' => 'Form visibile', 'stima_minuti' => '3'],
+                ['id' => '', 'azione' => 'Invia le credenziali', 'risultato_atteso' => '', 'stima_minuti' => '7'],
+            ],
+        ] + $this->csrf())->assertJSONFragment(['success' => true]);
+
+        $casoId = (int) db_connect()->table('casi_test')->where('titolo', 'Login valido')->get()->getRow()->id;
+        $passaggi = db_connect()->table('passaggi')->where('caso_id', $casoId)->orderBy('ordine')->get()->getResultArray();
+        $this->assertSame(['Apri la pagina', 'Invia le credenziali'], array_column($passaggi, 'azione'));
+        $this->assertNull($passaggi[1]['risultato_atteso']);
+        $this->assertSame([3, 7], array_map('intval', array_column($passaggi, 'stima_minuti')));
+        $this->seeInDatabase('casi_test', ['id' => $casoId, 'stima_minuti' => 10]);
+    }
+
+    public function testCasoSenzaPassaggiViene422(): void
+    {
+        $f = $this->creaPianoConUnCaso();
+        $suiteId = (int) db_connect()->table('suite')->get()->getRow()->id;
+
+        $result = $this->come($f['utente'], self::TUTTI)->post('admin/casi/store', [
+            'suite_id' => $suiteId, 'titolo' => 'Vuoto', 'priorita' => 'media',
+        ] + $this->csrf());
+
+        $this->assertSame(422, $result->response()->getStatusCode());
+        $result->assertJSONFragment(['errors' => ['passaggi' => 'Aggiungi almeno un passaggio.']]);
+        $this->dontSeeInDatabase('casi_test', ['titolo' => 'Vuoto']);
+    }
+
+    public function testModificaDelCasoMantieneGliIdDeiPassaggiEsistenti(): void
+    {
+        $f = $this->creaPianoConUnCaso();
+        $casoId = (int) db_connect()->table('casi_test')->get()->getRow()->id;
+
+        $this->come($f['utente'], self::TUTTI)->post("admin/casi/update/{$casoId}", [
+            'suite_id' => db_connect()->table('suite')->get()->getRow()->id, 'titolo' => 'Applicazione coupon', 'priorita' => 'media',
+            'passaggi' => [
+                ['id' => $f['passaggi'][0], 'azione' => 'Aggiungi prodotto (modificato)', 'stima_minuti' => '5'],
+                ['id' => $f['passaggi'][1], 'azione' => 'Inserisci coupon', 'stima_minuti' => '5'],
+                ['id' => $f['passaggi'][2], 'azione' => 'Verifica totale', 'stima_minuti' => '5'],
+                ['id' => '', 'azione' => 'Nuovo quarto passaggio', 'stima_minuti' => '10'],
+            ],
+        ] + $this->csrf())->assertJSONFragment(['success' => true]);
+
+        $this->seeInDatabase('passaggi', ['id' => $f['passaggi'][0], 'azione' => 'Aggiungi prodotto (modificato)']);
+        $this->assertSame(4, db_connect()->table('passaggi')->where('caso_id', $casoId)->countAllResults());
+        $this->seeInDatabase('casi_test', ['id' => $casoId, 'stima_minuti' => 25]);
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function postCasoConStima(array $f, mixed $stima): array
+    {
+        return [
+            'suite_id' => db_connect()->table('suite')->get()->getRow()->id, 'titolo' => 'Nuovo caso', 'priorita' => 'media',
+            'passaggi' => [['id' => '', 'azione' => 'Passo', 'stima_minuti' => $stima]],
+        ] + $this->csrf();
+    }
+
+    public function testLaStimaDelPassaggioEObbligatoria(): void
+    {
+        $f = $this->creaPianoConUnCaso();
+
+        foreach (['', '0', '-3', 'abc', '2.5'] as $stima) {
+            $result = $this->come($f['utente'], self::TUTTI)->post('admin/casi/store', $this->postCasoConStima($f, $stima));
+
+            $this->assertSame(422, $result->response()->getStatusCode(), "stima \"{$stima}\" doveva essere rifiutata");
+        }
+        $this->dontSeeInDatabase('casi_test', ['titolo' => 'Nuovo caso']);
+
+        $this->come($f['utente'], self::TUTTI)->post('admin/casi/store', $this->postCasoConStima($f, '4'))
+            ->assertJSONFragment(['success' => true]);
+    }
+
+    public function testNonSiEliminaUnPassaggioGiaEseguito(): void
+    {
+        $f = $this->creaPianoConUnCaso();
+        $casoId = (int) db_connect()->table('casi_test')->get()->getRow()->id;
+        (new App\Libraries\EsecuzioneService())->registra($f['pianoCaso'], $f['passaggi'][2], 'passato', null, 1, null, $f['utente']);
+
+        $result = $this->come($f['utente'], self::TUTTI)->post("admin/casi/update/{$casoId}", [
+            'suite_id' => db_connect()->table('suite')->get()->getRow()->id, 'titolo' => 'Applicazione coupon',  'priorita' => 'media',
+            'passaggi' => [
+                ['id' => $f['passaggi'][0], 'azione' => 'a', 'stima_minuti' => '5'],
+                ['id' => $f['passaggi'][1], 'azione' => 'b', 'stima_minuti' => '5'],
+            ],
+        ] + $this->csrf());
+
+        $this->assertSame(422, $result->response()->getStatusCode());
+        $this->assertSame(3, db_connect()->table('passaggi')->where('caso_id', $casoId)->countAllResults());
+    }
+
+    public function testNonSiEliminaUnCasoInclusoInUnPiano(): void
+    {
+        $f = $this->creaPianoConUnCaso();
+        $casoId = (int) db_connect()->table('casi_test')->get()->getRow()->id;
+
+        $result = $this->come($f['utente'], self::TUTTI)->delete("admin/casi/delete/{$casoId}");
+
+        $this->assertSame(422, $result->response()->getStatusCode());
+        $this->seeInDatabase('casi_test', ['id' => $casoId]);
+    }
+
+    public function testCreazionePianoCopiaLaStimaDelCasoEValidaLeDate(): void
+    {
+        $f = $this->creaPianoConUnCaso();
+        $versioneId = (int) db_connect()->table('versioni')->get()->getRow()->id;
+        $casoId     = (int) db_connect()->table('casi_test')->get()->getRow()->id;
+        $base = ['versione_id' => $versioneId, 'nome' => 'Smoke', 'quota_riverifica' => 10, 'casi' => [$casoId]];
+
+        $errore = $this->come($f['utente'], self::TUTTI)->post('admin/piani/store', $base + ['data_inizio' => '2026-10-24', 'data_fine_prevista' => '2026-10-20'] + $this->csrf());
+        $this->assertSame(422, $errore->response()->getStatusCode());
+
+        $this->come($f['utente'], self::TUTTI)->post('admin/piani/store', $base + ['data_inizio' => '2026-10-20', 'data_fine_prevista' => '2026-10-22'] + $this->csrf())
+            ->assertJSONFragment(['success' => true]);
+
+        $pianoId = (int) db_connect()->table('piani_test')->where('nome', 'Smoke')->get()->getRow()->id;
+        $this->seeInDatabase('piano_casi', ['piano_id' => $pianoId, 'caso_id' => $casoId, 'stima_minuti' => 15]);
+        $this->seeInDatabase('piani_test', ['id' => $pianoId, 'stato' => 'bozza']);
+    }
+
+    public function testNonSiRimuoveDalPianoUnCasoGiaEseguito(): void
+    {
+        $f = $this->creaPianoConUnCaso();
+        (new App\Libraries\EsecuzioneService())->registra($f['pianoCaso'], $f['passaggi'][0], 'passato', null, 1, null, $f['utente']);
+        $piano = db_connect()->table('piani_test')->get()->getRowArray();
+
+        $result = $this->come($f['utente'], self::TUTTI)->post("admin/piani/update/{$f['piano']}", [
+            'versione_id' => $piano['versione_id'], 'nome' => $piano['nome'], 'quota_riverifica' => 15,
+            'data_inizio' => '2026-10-20', 'data_fine_prevista' => '2026-10-24', 'casi' => [],
+        ] + $this->csrf());
+
+        $this->assertSame(422, $result->response()->getStatusCode());
+        $this->seeInDatabase('piano_casi', ['id' => $f['pianoCaso']]);
+    }
+
+    public function testFlussoHttpFallimentoBugFixERiverifica(): void
+    {
+        $f = $this->creaPianoConUnCaso();
+        $tester = self::TUTTI;
+        $dev    = ['piani.view', 'esecuzioni.view', 'bug.view', 'bug.update'];
+
+        $this->come($f['utente'], $tester)->post('admin/esecuzioni/registra', [
+            'piano_caso_id' => $f['pianoCaso'], 'passaggio_id' => $f['passaggi'][2], 'esito' => 'fallito', 'note' => 'sconto 1%', 'minuti_impiegati' => '6',
+            'bug_titolo' => 'Sconto errato', 'bug_gravita' => 'alta', 'bug_assegnato_a' => $f['utente'],
+        ] + $this->csrf())->assertJSONFragment(['success' => true]);
+        $bugId = (int) db_connect()->table('bug')->get()->getRow()->id;
+
+        $this->come($f['utente'], $dev)->post("admin/bug/update/{$bugId}", ['stato' => 'risolto', 'note_risoluzione' => 'fix formula'] + $this->csrf())
+            ->assertJSONFragment(['success' => true]);
+        $this->seeInDatabase('bug', ['id' => $bugId, 'stato' => 'risolto', 'note_risoluzione' => 'fix formula']);
+
+        $riverifiche = $this->come($f['utente'], $tester)->get('admin/esecuzioni/riverifiche?tutti=1');
+        $riverifiche->assertOK();
+        $riverifiche->assertSee('Sconto errato');
+
+        $this->come($f['utente'], $tester)->post('admin/esecuzioni/registra', [
+            'piano_caso_id' => $f['pianoCaso'], 'passaggio_id' => $f['passaggi'][2], 'esito' => 'passato', 'minuti_impiegati' => '2',
+        ] + $this->csrf())->assertJSONFragment(['success' => true]);
+        $this->seeInDatabase('bug', ['id' => $bugId, 'stato' => 'chiuso']);
+        $this->seeInDatabase('esecuzioni_passaggio', ['passaggio_id' => $f['passaggi'][2], 'tentativo' => 2, 'minuti_impiegati' => 2]);
+    }
+
+    public function testModificaEsecuzioneViaHttpEPermessi(): void
+    {
+        $f = $this->creaPianoConUnCaso();
+        (new App\Libraries\EsecuzioneService())->registra($f['pianoCaso'], $f['passaggi'][0], 'passato', null, 4, null, $f['utente'], '2026-10-10 09:00:00');
+        $id = (int) db_connect()->table('esecuzioni_passaggio')->get()->getRow()->id;
+
+        $this->come($f['utente'], ['esecuzioni.view', 'piani.view'])
+            ->post("admin/esecuzioni/modifica/{$id}", ['minuti_impiegati' => '8', 'eseguito_il' => '2026-10-10T09:20'] + $this->csrf())
+            ->assertStatus(403);
+
+        $this->come($f['utente'], self::TUTTI)
+            ->post("admin/esecuzioni/modifica/{$id}", ['minuti_impiegati' => '8', 'note' => 'ok', 'eseguito_il' => '2026-10-10T09:20'] + $this->csrf())
+            ->assertJSONFragment(['success' => true]);
+        $this->seeInDatabase('esecuzioni_passaggio', ['id' => $id, 'minuti_impiegati' => 8, 'eseguito_il' => '2026-10-10 09:20:00']);
+        $this->seeInDatabase('log_attivita', ['modulo' => 'esecuzioni', 'azione' => 'update', 'esito' => 1]);
+
+        $errore = $this->come($f['utente'], self::TUTTI)
+            ->post("admin/esecuzioni/modifica/{$id}", ['minuti_impiegati' => '8', 'eseguito_il' => 'xx'] + $this->csrf());
+        $this->assertSame(422, $errore->response()->getStatusCode());
+    }
+
+    public function testLaGuidaSiMostraSoloConLeSezioniDelProprioRuolo(): void
+    {
+        $f = $this->creaPianoConUnCaso();
+
+        $dev = $this->come($f['utente'], ['bug.view', 'bug.update'])->get('admin/guida');
+        $dev->assertOK();
+        $dev->assertSee('Stati di un bug');
+        $dev->assertDontSee('Chiudere un piano');
+        $dev->assertDontSee('Amministrazione');
+
+        $tutto = $this->come($f['utente'], array_merge(self::TUTTI, ['utenti.view', 'log.view']))->get('admin/guida');
+        $tutto->assertOK();
+        $tutto->assertSee('Chiudere un piano');
+        $tutto->assertSee('Amministrazione');
+        $tutto->assertSee('data-diagramma');
+    }
+
+    public function testLaGuidaRichiedeSoloLAutenticazione(): void
+    {
+        $this->withSession([])->get('admin/guida')->assertRedirectTo(site_url('login'));
+
+        $this->withSession(['logged_in' => true, 'user_id' => 1, 'nome' => 'X', 'permessi' => []])->get('admin/guida')->assertOK();
+    }
+
+    public function testRegistraConDataEOraSceltiViaHttp(): void
+    {
+        $f = $this->creaPianoConUnCaso();
+
+        $this->come($f['utente'], self::TUTTI)->post('admin/esecuzioni/registra', [
+            'piano_caso_id' => $f['pianoCaso'], 'passaggio_id' => $f['passaggi'][0], 'esito' => 'passato',
+            'minuti_impiegati' => '3', 'eseguito_il' => '2026-10-09T16:40',
+        ] + $this->csrf())->assertJSONFragment(['success' => true]);
+
+        $this->seeInDatabase('esecuzioni_passaggio', ['passaggio_id' => $f['passaggi'][0], 'eseguito_il' => '2026-10-09 16:40:00']);
+    }
+
+    public function testRegistraSenzaTempoViene422SulCampoMinuti(): void
+    {
+        $f = $this->creaPianoConUnCaso();
+
+        $result = $this->come($f['utente'], self::TUTTI)->post('admin/esecuzioni/registra', [
+            'piano_caso_id' => $f['pianoCaso'], 'passaggio_id' => $f['passaggi'][0], 'esito' => 'passato',
+        ] + $this->csrf());
+
+        $this->assertSame(422, $result->response()->getStatusCode());
+        $this->assertArrayHasKey('minuti_impiegati', json_decode($result->getJSON(), true)['errors']);
+        $this->dontSeeInDatabase('esecuzioni_passaggio', ['passaggio_id' => $f['passaggi'][0]]);
+    }
+
+    public function testTransizioneDiStatoNonValidaViene422SulCampoStato(): void
+    {
+        $f = $this->creaPianoConUnCaso();
+        (new App\Libraries\EsecuzioneService())->registra($f['pianoCaso'], $f['passaggi'][0], 'fallito', null, 1, ['titolo' => 'Bug', 'gravita' => 'bassa'], $f['utente']);
+        $bugId = (int) db_connect()->table('bug')->get()->getRow()->id;
+
+        $result = $this->come($f['utente'], self::TUTTI)->post("admin/bug/update/{$bugId}", ['stato' => 'chiuso'] + $this->csrf());
+
+        $this->assertSame(422, $result->response()->getStatusCode());
+        $this->assertArrayHasKey('stato', json_decode($result->getJSON(), true)['errors']);
+    }
+
+    public function testIPermessiSeparanoTesterESviluppatore(): void
+    {
+        $f = $this->creaPianoConUnCaso();
+        $soloTester = ['piani.view', 'esecuzioni.view', 'esecuzioni.create', 'bug.view'];
+        $soloDev    = ['piani.view', 'esecuzioni.view', 'bug.view', 'bug.update'];
+
+        // Il tester non puo' cambiare lo stato di un bug...
+        $this->assertSame(403, $this->come($f['utente'], $soloTester)->post('admin/bug/update/1', ['stato' => 'risolto'] + $this->csrf())->response()->getStatusCode());
+        // ...e lo sviluppatore non puo' registrare esiti ne' chiudere piani.
+        $this->assertSame(403, $this->come($f['utente'], $soloDev)->post('admin/esecuzioni/registra', ['esito' => 'passato'] + $this->csrf())->response()->getStatusCode());
+        $this->assertSame(403, $this->come($f['utente'], $soloDev)->post("admin/piani/chiudi/{$f['piano']}", $this->csrf())->response()->getStatusCode());
+    }
+
+    public function testPagineDiDettaglioEdEsecuzioneSiCaricano(): void
+    {
+        $f = $this->creaPianoConUnCaso();
+
+        $dettaglio = $this->come($f['utente'], self::TUTTI)->get("admin/piani/dettaglio/{$f['piano']}");
+        $dettaglio->assertOK();
+        $dettaglio->assertSee('Regressione 2.4');
+        $dettaglio->assertSee('Applicazione coupon');
+
+        $esecuzione = $this->come($f['utente'], self::TUTTI)->get("admin/esecuzioni/caso/{$f['pianoCaso']}");
+        $esecuzione->assertOK();
+        $esecuzione->assertSee('Verifica totale ridotto del 10%');
+
+        $dashboard = $this->come($f['utente'], self::TUTTI)->get('admin/dashboard');
+        $dashboard->assertOK();
+        $dashboard->assertSee('Regressione 2.4');
+    }
+
+    public function testDatatableDeiModuliRispondeConIDati(): void
+    {
+        $f = $this->creaPianoConUnCaso();
+
+        foreach (['prodotti' => 'ShopFlow', 'versioni' => '2.4', 'suite' => 'Checkout', 'casi' => 'Applicazione coupon', 'piani' => 'Regressione 2.4'] as $modulo => $atteso) {
+            $post = ['draw' => 1, 'start' => 0, 'length' => 10, 'order' => [['column' => 0, 'dir' => 'desc']], 'search' => ['value' => ''], ] + $this->csrf();
+            $risposta = $this->come($f['utente'], self::TUTTI)->post("admin/{$modulo}/datatable", $post);
+            $risposta->assertOK();
+            $risposta->assertJSONFragment(['recordsTotal' => 1]);
+            $risposta->assertSee($atteso);
+        }
+
+        // La ricerca filtra davvero (colonne qualificate, nessuna ambiguita' con i join).
+        $filtrata = $this->come($f['utente'], self::TUTTI)->post('admin/piani/datatable', ['draw' => 1, 'start' => 0, 'length' => 10, 'search' => ['value' => 'inesistente']] + $this->csrf());
+        $filtrata->assertJSONFragment(['recordsFiltered' => 0]);
+
+        $bug = $this->come($f['utente'], self::TUTTI)->post('admin/bug/datatable', ['draw' => 1, 'start' => 0, 'length' => 10, 'search' => ['value' => 'x']] + $this->csrf());
+        $bug->assertOK();
+    }
+
+    public function testIndexEFormDiOgniModuloSiRenderizzano(): void
+    {
+        $f = $this->creaPianoConUnCaso();
+        (new App\Libraries\EsecuzioneService())->registra($f['pianoCaso'], $f['passaggi'][0], 'fallito', null, 1, ['titolo' => 'Bug demo', 'gravita' => 'bassa'], $f['utente']);
+        $bugId = (int) db_connect()->table('bug')->get()->getRow()->id;
+
+        foreach (['prodotti', 'versioni', 'suite', 'casi', 'piani', 'bug'] as $modulo) {
+            $index = $this->come($f['utente'], self::TUTTI)->get("admin/{$modulo}");
+            $index->assertOK();
+            $index->assertSee('tabella');
+        }
+
+        foreach (['prodotti', 'versioni', 'suite', 'casi', 'piani'] as $modulo) {
+            $nuovo = $this->come($f['utente'], self::TUTTI)->get("admin/{$modulo}/form");
+            $nuovo->assertOK();
+            $nuovo->assertJSONFragment(['success' => true]);
+
+            $modifica = $this->come($f['utente'], self::TUTTI)->get("admin/{$modulo}/form/1");
+            $modifica->assertOK();
+            $modifica->assertJSONFragment(['success' => true]);
+        }
+
+        $dettaglioBug = $this->come($f['utente'], self::TUTTI)->get("admin/bug/form/{$bugId}");
+        $dettaglioBug->assertOK();
+        $dettaglioBug->assertSee('Bug demo');
+        $dettaglioBug->assertSee('Nuovo stato');
+    }
+
+    public function testLeOperazioniVengonoRegistrateNelLog(): void
+    {
+        $f = $this->creaPianoConUnCaso();
+
+        $this->come($f['utente'], self::TUTTI)->post('admin/esecuzioni/registra', [
+            'piano_caso_id' => $f['pianoCaso'], 'passaggio_id' => $f['passaggi'][0], 'esito' => 'passato', 'minuti_impiegati' => '3',
+        ] + $this->csrf());
+
+        $this->seeInDatabase('log_attivita', ['modulo' => 'esecuzioni', 'azione' => 'create', 'esito' => 1, 'utente_id' => $f['utente']]);
+    }
+
+    public function testIlSeederEIdempotenteEAssegnaTuttoAllAmministratore(): void
+    {
+        $db = db_connect();
+        $db->table('ruoli')->insert(['nome' => 'Amministratore', 'created_at' => date('Y-m-d H:i:s'), 'updated_at' => date('Y-m-d H:i:s')]);
+
+        (new GestioneTestSeeder(config('Database')))->run();
+        (new GestioneTestSeeder(config('Database')))->run();
+
+        $this->assertSame(16, $db->table('permessi')->countAllResults());
+        $this->assertSame(4, $db->table('ruoli')->countAllResults());
+
+        $ruoloId = fn (string $nome) => (int) $db->table('ruoli')->where('nome', $nome)->get()->getRow()->id;
+        $this->assertSame(16, $db->table('ruolo_permesso')->where('ruolo_id', $ruoloId('Amministratore'))->countAllResults());
+
+        $permessiDi = static fn (int $id) => array_column(
+            $db->table('ruolo_permesso rp')->select('p.chiave')->join('permessi p', 'p.id = rp.permesso_id')->where('rp.ruolo_id', $id)->get()->getResultArray(),
+            'chiave'
+        );
+        $this->assertContains('bug.update', $permessiDi($ruoloId('Sviluppatore')));
+        $this->assertNotContains('esecuzioni.create', $permessiDi($ruoloId('Sviluppatore')));
+        $this->assertContains('esecuzioni.create', $permessiDi($ruoloId('Tester')));
+        $this->assertNotContains('bug.update', $permessiDi($ruoloId('Tester')));
+        $this->assertContains('piani.create', $permessiDi($ruoloId('Test manager')));
+    }
+}

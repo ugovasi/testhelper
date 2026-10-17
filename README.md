@@ -72,7 +72,7 @@ php spark db:seed RbacSeeder
 php spark serve
 ```
 
-Il database di default è SQLite (`writable/database.db`, zero configurazione). Per
+Il database di default è SQLite (`writable/database.sqlite`, zero configurazione). Per
 usare MySQL/MariaDB in produzione, modifica le variabili `database.default.*` in
 `.env` (vedi i commenti nel file).
 
@@ -84,6 +84,32 @@ Apri `http://localhost:8080/login` con le credenziali demo:
 Il seeder crea anche i ruoli **Operatore** (utenti: view/create/edit) e **Lettore**
 (utenti: solo view), utili per verificare il comportamento del RBAC con permessi
 ridotti.
+
+## Gestione piani di test
+
+Libreria riusabile (prodotti → versioni, suite → casi di test → passaggi) e piani di
+test con esecuzione **per passaggio**:
+
+- Un passaggio fallito apre un **bug** collegato; lo sviluppatore lo porta a *in
+  lavorazione* e poi a *risolto*.
+- Il passaggio torna *da riverificare*: il tester lo riesegue (nuovo tentativo, lo
+  storico non si sovrascrive). Se passa il bug si chiude, se fallisce viene riaperto.
+- Avanzamento, ritardo e data di fine proiettata sono **calcolati** dalle esecuzioni
+  (`app/Libraries/PianoAvanzamento.php`), non memorizzati. Le regole del flusso sono in
+  `app/Libraries/EsecuzioneService.php`.
+
+La voce **Guida** del menu spiega, per ogni utente, solo le operazioni consentite dai suoi
+permessi, con i diagrammi di flusso (Mermaid, caricato da CDN). I contenuti sono in
+`app/Libraries/GuidaContenuti.php`: aggiungendo una funzione con nuovi permessi, va
+aggiornata anche la guida.
+
+Ruoli e permessi dedicati (Test manager, Tester, Sviluppatore) si creano con un seeder
+idempotente, eseguibile anche su un database gia popolato:
+
+```bash
+php spark migrate
+php spark db:seed GestioneTestSeeder
+```
 
 ## Test
 
@@ -102,6 +128,9 @@ dal database di sviluppo — non serve nessuna configurazione aggiuntiva. Copron
   risposte 401/403 JSON su richieste AJAX, pass-through quando autorizzato;
   `ActivityLogFilter` — una riga di log per login/logout e per ogni create/update/
   delete nei moduli admin, nessuna riga per le sole letture (index/datatable).
+- **Gestione test** (`tests/unit/Libraries/`, `GestioneTestControllerTest`): flusso
+  fallimento → bug → fix → riverifica (anche fallita), metriche di avanzamento con
+  date fisse, vincoli sullo storico, permessi tester/sviluppatore, seeder idempotente.
 - **Controllers** (`tests/unit/Controllers/`): flusso completo di login/logout via
   feature test (`FeatureTestTrait`), incluse credenziali errate, utente disattivato
   e popolamento dei permessi in sessione; creazione/cancellazione utenti via

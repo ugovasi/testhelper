@@ -12,6 +12,7 @@ $routes->post('logout', 'AuthController::logout');
 
 $routes->group('admin', ['namespace' => 'App\Controllers\Admin', 'filter' => 'auth'], static function (RouteCollection $routes) {
     $routes->get('dashboard', 'DashboardController::index');
+    $routes->get('guida', 'GuidaController::index');
 
     $routes->group('utenti', ['filter' => 'permission:utenti.view'], static function (RouteCollection $routes) {
         $routes->get('/', 'UtentiController::index');
@@ -41,6 +42,44 @@ $routes->group('admin', ['namespace' => 'App\Controllers\Admin', 'filter' => 'au
         $routes->post('store', 'PermessiController::store', ['filter' => 'permission:permessi.create']);
         $routes->post('update/(:num)', 'PermessiController::update/$1', ['filter' => 'permission:permessi.edit']);
         $routes->delete('delete/(:num)', 'PermessiController::delete/$1', ['filter' => 'permission:permessi.delete']);
+    });
+
+    // Moduli CRUD della gestione test: stesso schema di utenti/ruoli/permessi,
+    // ripetuto qui in un'unica closure perche' e' identico per tutti.
+    $crud = static function (RouteCollection $routes, string $slug, string $controller, string $permesso, ?string $viewPermesso = null) {
+        $routes->group($slug, ['filter' => 'permission:' . ($viewPermesso ?? $permesso) . '.view'], static function (RouteCollection $routes) use ($controller, $permesso) {
+            $routes->get('/', "{$controller}::index");
+            $routes->post('datatable', "{$controller}::datatable");
+            $routes->get('form', "{$controller}::form", ['filter' => "permission:{$permesso}.create"]);
+            $routes->get('form/(:num)', "{$controller}::form/$1", ['filter' => "permission:{$permesso}.edit"]);
+            $routes->post('store', "{$controller}::store", ['filter' => "permission:{$permesso}.create"]);
+            $routes->post('update/(:num)', "{$controller}::update/$1", ['filter' => "permission:{$permesso}.edit"]);
+            $routes->delete('delete/(:num)', "{$controller}::delete/$1", ['filter' => "permission:{$permesso}.delete"]);
+        });
+    };
+
+    $crud($routes, 'prodotti', 'ProdottiController', 'prodotti');
+    $crud($routes, 'versioni', 'VersioniController', 'prodotti');
+    $crud($routes, 'suite', 'SuiteController', 'casi');
+    $crud($routes, 'casi', 'CasiTestController', 'casi');
+    $crud($routes, 'piani', 'PianiTestController', 'piani');
+
+    $routes->get('piani/dettaglio/(:num)', 'PianiTestController::dettaglio/$1', ['filter' => 'permission:piani.view']);
+    $routes->post('piani/chiudi/(:num)', 'PianiTestController::chiudi/$1', ['filter' => 'permission:esecuzioni.create']);
+
+    $routes->group('esecuzioni', ['filter' => 'permission:esecuzioni.view'], static function (RouteCollection $routes) {
+        $routes->get('caso/(:num)', 'EsecuzioniController::caso/$1');
+        $routes->get('riverifiche', 'EsecuzioniController::riverifiche');
+        $routes->post('registra', 'EsecuzioniController::registra', ['filter' => 'permission:esecuzioni.create']);
+        $routes->post('modifica/(:num)', 'EsecuzioniController::modifica/$1', ['filter' => 'permission:esecuzioni.create']);
+    });
+
+    // I bug non si creano ne si eliminano a mano: nascono da un passaggio fallito.
+    $routes->group('bug', ['filter' => 'permission:bug.view'], static function (RouteCollection $routes) {
+        $routes->get('/', 'BugController::index');
+        $routes->post('datatable', 'BugController::datatable');
+        $routes->get('form/(:num)', 'BugController::form/$1');
+        $routes->post('update/(:num)', 'BugController::update/$1', ['filter' => 'permission:bug.update']);
     });
 
     $routes->group('log', ['filter' => 'permission:log.view'], static function (RouteCollection $routes) {
