@@ -34,7 +34,7 @@ class EsecuzioneService
      *
      * @param array{titolo?: string, descrizione?: string, gravita?: string, assegnato_a?: int|string|null}|null $datiBug
      *
-     * @return array{success: bool, message: string, errors?: array<string, string>}
+     * @return array{success: bool, message: string, errors?: array<string, string>, bug_id?: int}
      */
     public function registra(int $pianoCasoId, int $passaggioId, string $esito, ?string $note, string|int|null $minuti, ?array $datiBug, ?int $utenteId, ?string $eseguitoIl = null): array
     {
@@ -127,6 +127,7 @@ class EsecuzioneService
 
         $bugs = new BugModel();
         $messaggio = 'Esito registrato.';
+        $bugCoinvoltoId = null;
 
         if ($riapre) {
             $bugs->skipValidation(true)->update($bugEsistente['id'], [
@@ -134,6 +135,7 @@ class EsecuzioneService
                 'risolto_il' => null,
             ]);
             $messaggio = "Riverifica fallita: il bug #{$bugEsistente['id']} e stato riaperto.";
+            $bugCoinvoltoId = (int) $bugEsistente['id'];
         } elseif ($esito === 'fallito') {
             $bugId = $bugs->insert([
                 'titolo'                => trim($datiBug['titolo']),
@@ -144,6 +146,7 @@ class EsecuzioneService
                 'assegnato_a'           => ($datiBug['assegnato_a'] ?? '') !== '' ? (int) $datiBug['assegnato_a'] : null,
             ]);
             $messaggio = "Passaggio fallito: aperto il bug #{$bugId}.";
+            $bugCoinvoltoId = (int) $bugId;
         } elseif ($esito === 'passato' && $bugEsistente !== null) {
             $bugs->skipValidation(true)->update($bugEsistente['id'], [
                 'stato'     => BugModel::STATO_CHIUSO,
@@ -162,7 +165,7 @@ class EsecuzioneService
             return ['success' => false, 'message' => 'Errore nel salvataggio dell\'esito.'];
         }
 
-        return ['success' => true, 'message' => $messaggio];
+        return ['success' => true, 'message' => $messaggio] + ($bugCoinvoltoId !== null ? ['bug_id' => $bugCoinvoltoId] : []);
     }
 
     /**

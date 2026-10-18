@@ -48,6 +48,8 @@ class ActivityLogFilter implements FilterInterface
         'admin/esecuzioni/registra' => ['azione' => 'create', 'modulo' => 'esecuzioni'],
         'admin/esecuzioni/modifica' => ['azione' => 'update', 'modulo' => 'esecuzioni'],
         'admin/bug/update'      => ['azione' => 'update', 'modulo' => 'bug'],
+        'admin/bug/allega'      => ['azione' => 'create', 'modulo' => 'bug_allegati'],
+        'admin/bug/elimina-allegato' => ['azione' => 'delete', 'modulo' => 'bug_allegati'],
     ];
 
     private const ETICHETTE_AZIONE = [

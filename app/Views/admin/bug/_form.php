@@ -26,6 +26,39 @@
         <?php endif; ?>
     </div>
 
+    <div class="mb-3" data-allegati-sezione data-bug-id="<?= (int) $bug['id'] ?>">
+        <h6><i class="bi bi-paperclip"></i> Allegati <span class="text-muted fw-normal">(<?= count($allegati) ?>)</span></h6>
+        <?php if ($allegati === []): ?>
+            <p class="text-muted small mb-2">Nessun allegato.</p>
+        <?php endif; ?>
+        <div class="d-flex flex-wrap gap-2 mb-2">
+            <?php foreach ($allegati as $a): ?>
+                <div class="border rounded p-1 small text-center" style="width: 7.5rem;">
+                    <a href="<?= site_url('admin/bug/allegato/' . $a['id']) ?>" target="_blank" rel="noopener" class="text-decoration-none d-block" title="<?= esc($a['nome_originale'], 'attr') ?>">
+                        <?php if ($a['immagine']): ?>
+                            <img src="<?= site_url('admin/bug/allegato/' . $a['id']) ?>" alt="<?= esc($a['nome_originale'], 'attr') ?>" class="img-fluid rounded" style="max-height: 4.5rem;">
+                        <?php else: ?>
+                            <i class="bi bi-file-earmark fs-1"></i>
+                        <?php endif; ?>
+                        <div class="text-truncate"><?= esc($a['nome_originale']) ?></div>
+                    </a>
+                    <div class="text-muted"><?= $a['dimensione'] >= 1048576 ? round($a['dimensione'] / 1048576, 1) . ' MB' : max(1, (int) round($a['dimensione'] / 1024)) . ' KB' ?></div>
+                    <?php if ($puoAllegare): ?>
+                        <button type="button" class="btn btn-sm btn-link text-danger p-0" data-allegato-elimina="<?= (int) $a['id'] ?>"
+                                data-nome="<?= esc($a['nome_originale'], 'attr') ?>">Elimina</button>
+                    <?php endif; ?>
+                </div>
+            <?php endforeach; ?>
+        </div>
+        <?php if ($puoAllegare): ?>
+            <input type="file" class="form-control form-control-sm" multiple data-allegati-input data-allegato-carica
+                   accept=".png,.jpg,.jpeg,.gif,.webp,.pdf,.txt,.log,.csv,.json,.zip,.mp4,.webm">
+            <div class="form-text">
+                Scegli i file o incolla uno screenshot con Ctrl+V. Fino a <?= (int) \App\Libraries\AllegatiBug::MAX_FILE ?> file per volta, max <?= (int) round($limiteAllegati / 1048576) ?> MB ciascuno.
+            </div>
+        <?php endif; ?>
+    </div>
+
     <?php if ($puoAggiornare && $transizioni !== []): ?>
         <div class="mb-3">
             <label for="stato" class="form-label">Nuovo stato</label>

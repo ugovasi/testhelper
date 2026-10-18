@@ -247,6 +247,176 @@ final class GestioneTestControllerTest extends CIUnitTestCase
         $this->assertSame(422, $errore->response()->getStatusCode());
     }
 
+    /**
+     * Crea un bug con un allegato vero nella cartella reale dei caricamenti (da ripulire).
+     *
+     * @return array{bug: int, allegato: int, file: string, cartella: string}
+     */
+    private function bugConAllegato(array $f, string $nomeFile, string $mime, string $contenuto): array
+    {
+        (new App\Libraries\EsecuzioneService())->registra($f['pianoCaso'], $f['passaggi'][0], 'fallito', null, 1, ['titolo' => 'Bug demo', 'gravita' => 'bassa'], $f['utente']);
+        $bugId = (int) db_connect()->table('bug')->get()->getRow()->id;
+
+        $cartella = WRITEPATH . 'uploads/bug/' . $bugId;
+        @mkdir($cartella, 0750, true);
+        file_put_contents($cartella . '/' . $nomeFile, $contenuto);
+
+        db_connect()->table('bug_allegati')->insert([
+            'bug_id' => $bugId, 'nome_originale' => 'prova "uno".txt', 'nome_file' => $nomeFile, 'mime' => $mime,
+            'dimensione' => strlen($contenuto), 'caricato_da' => $f['utente'], 'created_at' => date('Y-m-d H:i:s'),
+        ]);
+
+        return ['bug' => $bugId, 'allegato' => (int) db_connect()->insertID(), 'file' => $cartella . '/' . $nomeFile, 'cartella' => $cartella];
+    }
+
+    public function testIlDownloadDegliAllegatiHaIntestazioniDiSicurezzaERichiedeIPermessi(): void
+    {
+        $f = $this->creaPianoConUnCaso();
+        $a = $this->bugConAllegato($f, 'abc123.txt', 'text/plain', 'log di prova');
+
+        try {
+            $ok = $this->come($f['utente'], ['bug.view'])->get("admin/bug/allegato/{$a['allegato']}");
+            $ok->assertOK();
+            $ok->assertSee('log di prova');
+            $this->assertSame('nosniff', $ok->response()->getHeaderLine('X-Content-Type-Options'));
+            $this->assertStringContainsString('sandbox', $ok->response()->getHeaderLine('Content-Security-Policy'));
+            $this->assertStringStartsWith('attachment;', $ok->response()->getHeaderLine('Content-Disposition'));
+            $this->assertStringNotContainsString('"uno"', $ok->response()->getHeaderLine('Content-Disposition'), 'le virgolette del nome sono neutralizzate');
+
+            $this->assertSame(403, $this->come($f['utente'], ['piani.view'])->get("admin/bug/allegato/{$a['allegato']}")->response()->getStatusCode());
+            $this->assertSame(404, $this->come($f['utente'], ['bug.view'])->get('admin/bug/allegato/999999')->response()->getStatusCode());
+        } finally {
+            @unlink($a['file']);
+            @rmdir($a['cartella']);
+        }
+    }
+
+    public function testLeImmaginiSiMostranoInLineaGliAltriFileSiScaricano(): void
+    {
+        $f = $this->creaPianoConUnCaso();
+        $a = $this->bugConAllegato($f, 'img456.png', 'image/png', base64_decode('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=='));
+
+        try {
+            $r = $this->come($f['utente'], ['bug.view'])->get("admin/bug/allegato/{$a['allegato']}");
+
+            $this->assertSame('image/png', $r->response()->getHeaderLine('Content-Type'));
+            $this->assertStringStartsWith('inline;', $r->response()->getHeaderLine('Content-Disposition'));
+        } finally {
+            @unlink($a['file']);
+            @rmdir($a['cartella']);
+        }
+    }
+
+    public function testLEliminazioneDiUnAllegatoVaPerPermessoEPulisceIlDisco(): void
+    {
+        $f = $this->creaPianoConUnCaso();
+        $a = $this->bugConAllegato($f, 'del789.txt', 'text/plain', 'x');
+
+        try {
+            // Un semplice lettore non puo' togliere allegati...
+            $this->assertSame(403, $this->come($f['utente'], ['bug.view'])->post("admin/bug/elimina-allegato/{$a['allegato']}", $this->csrf())->response()->getStatusCode());
+            $this->assertFileExists($a['file']);
+
+            // ...lo sviluppatore (bug.update) e il tester (esecuzioni.create) si'.
+            $this->come($f['utente'], ['bug.view', 'esecuzioni.create'])->post("admin/bug/elimina-allegato/{$a['allegato']}", $this->csrf())
+                ->assertJSONFragment(['success' => true]);
+            $this->assertFileDoesNotExist($a['file']);
+            $this->dontSeeInDatabase('bug_allegati', ['id' => $a['allegato']]);
+            $this->seeInDatabase('log_attivita', ['modulo' => 'bug_allegati', 'azione' => 'delete', 'esito' => 1]);
+        } finally {
+            @unlink($a['file']);
+            @rmdir($a['cartella']);
+        }
+    }
+
+    public function testAllegaSenzaFileOSenzaPermessoVieneRifiutato(): void
+    {
+        $f = $this->creaPianoConUnCaso();
+        $a = $this->bugConAllegato($f, 'ccc.txt', 'text/plain', 'x');
+
+        try {
+            $senzaFile = $this->come($f['utente'], ['bug.view', 'bug.update'])->post("admin/bug/allega/{$a['bug']}", $this->csrf());
+            $this->assertSame(422, $senzaFile->response()->getStatusCode());
+
+            $lettore = $this->come($f['utente'], ['bug.view'])->post("admin/bug/allega/{$a['bug']}", $this->csrf());
+            $this->assertSame(403, $lettore->response()->getStatusCode());
+
+            $this->assertSame(404, $this->come($f['utente'], ['bug.view', 'bug.update'])->post('admin/bug/allega/999999', $this->csrf())->response()->getStatusCode());
+        } finally {
+            @unlink($a['file']);
+            @rmdir($a['cartella']);
+        }
+    }
+
+    public function testIlDettaglioDelBugMostraGliAllegatiEIControlliSecondoIPermessi(): void
+    {
+        $f = $this->creaPianoConUnCaso();
+        $a = $this->bugConAllegato($f, 'ddd.txt', 'text/plain', 'x');
+
+        try {
+            $dev = json_decode($this->come($f['utente'], ['bug.view', 'bug.update'])->get("admin/bug/form/{$a['bug']}")->getJSON(), true)['html'];
+            $this->assertStringContainsString('prova &quot;uno&quot;.txt', $dev);
+            $this->assertStringContainsString('data-allegato-elimina', $dev);
+            $this->assertStringContainsString('data-allegato-carica', $dev);
+
+            $lettore = json_decode($this->come($f['utente'], ['bug.view'])->get("admin/bug/form/{$a['bug']}")->getJSON(), true)['html'];
+            $this->assertStringContainsString('prova &quot;uno&quot;.txt', $lettore);
+            $this->assertStringNotContainsString('data-allegato-elimina', $lettore);
+            $this->assertStringNotContainsString('data-allegato-carica', $lettore);
+        } finally {
+            @unlink($a['file']);
+            @rmdir($a['cartella']);
+        }
+    }
+
+    public function testUnFileNonValidoAllaSegnalazioneBloccaTuttoSenzaCreareIlBug(): void
+    {
+        $f = $this->creaPianoConUnCaso();
+        service('superglobals')->setFilesArray(['allegati' => [
+            'name' => ['grande.png'], 'type' => ['image/png'], 'tmp_name' => [''], 'error' => [UPLOAD_ERR_INI_SIZE], 'size' => [0],
+        ]]);
+
+        try {
+            $r = $this->come($f['utente'], self::TUTTI)->post('admin/esecuzioni/registra', [
+                'piano_caso_id' => $f['pianoCaso'], 'passaggio_id' => $f['passaggi'][0], 'esito' => 'fallito', 'minuti_impiegati' => '1',
+                'bug_titolo' => 'Con allegato', 'bug_gravita' => 'bassa',
+            ] + $this->csrf());
+
+            $this->assertSame(422, $r->response()->getStatusCode());
+            $this->assertStringContainsString('dimensione massima', json_decode($r->getJSON(), true)['message']);
+            $this->dontSeeInDatabase('bug', ['titolo' => 'Con allegato']);
+            $this->dontSeeInDatabase('esecuzioni_passaggio', ['passaggio_id' => $f['passaggi'][0]]);
+        } finally {
+            service('superglobals')->setFilesArray([]);
+        }
+    }
+
+    public function testLaDashboardMostraLeStatisticheSecondoIPermessi(): void
+    {
+        $f = $this->creaPianoConUnCaso();
+        (new App\Libraries\EsecuzioneService())->registra($f['pianoCaso'], $f['passaggi'][0], 'fallito', null, 2, ['titolo' => 'Bug demo', 'gravita' => 'alta'], $f['utente']);
+
+        $tutto = $this->come($f['utente'], self::TUTTI)->get('admin/dashboard');
+        $tutto->assertOK();
+        foreach (['Stato dei passaggi', 'Esecuzioni per giorno', 'Bug per stato', 'Bug da correggere per gravità', 'Tempo medio di chiusura', 'Passaggi chiusi'] as $testo) {
+            $tutto->assertSee($testo);
+        }
+
+        $soloBug = $this->come($f['utente'], ['bug.view'])->get('admin/dashboard');
+        $soloBug->assertOK();
+        $soloBug->assertSee('Bug per stato');
+        $soloBug->assertDontSee('Stato dei passaggi');
+
+        $soloTest = $this->come($f['utente'], ['piani.view'])->get('admin/dashboard');
+        $soloTest->assertOK();
+        $soloTest->assertSee('Stato dei passaggi');
+        $soloTest->assertDontSee('Bug per stato');
+
+        $nulla = $this->come($f['utente'], [])->get('admin/dashboard');
+        $nulla->assertOK();
+        $nulla->assertDontSee('viz-root');
+    }
+
     public function testLaGuidaSiMostraSoloConLeSezioniDelProprioRuolo(): void
     {
         $f = $this->creaPianoConUnCaso();

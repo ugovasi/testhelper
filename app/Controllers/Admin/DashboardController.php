@@ -4,7 +4,7 @@ namespace App\Controllers\Admin;
 
 use App\Controllers\BaseController;
 use App\Libraries\PianoAvanzamento;
-use App\Models\BugModel;
+use App\Libraries\StatisticheDashboard;
 
 class DashboardController extends BaseController
 {
@@ -13,7 +13,8 @@ class DashboardController extends BaseController
         $permessi = session()->get('permessi') ?? [];
         $db       = db_connect();
 
-        $piani = [];
+        $piani    = [];
+        $statTest = null;
         if (in_array('piani.view', $permessi, true)) {
             $avanzamento = new PianoAvanzamento();
             $aperti = $db->table('piani_test p')
@@ -27,17 +28,27 @@ class DashboardController extends BaseController
             foreach ($aperti as $piano) {
                 $piani[] = $piano + ['metriche' => $avanzamento->carica((int) $piano['id'])['metriche']];
             }
+
+            $statTest = [
+                'piani'      => StatisticheDashboard::test(),
+                'passaggi'   => StatisticheDashboard::passaggi(array_column($piani, 'metriche')),
+                'esecuzioni' => StatisticheDashboard::esecuzioniPerGiorno(),
+            ];
         }
 
         $bugAperti = null;
+        $statBug   = null;
         if (in_array('bug.view', $permessi, true)) {
-            $bugAperti = $db->table('bug')->whereIn('stato', BugModel::STATI_APERTI)->countAllResults();
+            $statBug   = StatisticheDashboard::bug();
+            $bugAperti = $statBug['aperti'];
         }
 
         return view('admin/dashboard', [
             'title'     => 'Dashboard',
             'piani'     => $piani,
             'bugAperti' => $bugAperti,
+            'statTest'  => $statTest,
+            'statBug'   => $statBug,
         ]);
     }
 }

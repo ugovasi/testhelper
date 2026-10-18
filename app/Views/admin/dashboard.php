@@ -39,7 +39,15 @@
 <?php endif; ?>
 <?= $this->endSection() ?>
 
+<?= $this->section('styles') ?>
+<link rel="stylesheet" href="<?= base_url('assets/css/viz.css') ?>">
+<?= $this->endSection() ?>
+
 <?= $this->section('content') ?>
+<?php if ($statTest !== null || $statBug !== null): ?>
+    <?= view('admin/dashboard/_statistiche', ['statTest' => $statTest, 'statBug' => $statBug], ['debug' => false]) ?>
+<?php endif; ?>
+
 <div class="card">
     <div class="card-body">
         <h5>Benvenuto, <?= esc(session()->get('nome')) ?></h5>
@@ -57,4 +65,8 @@
         </div>
     </div>
 </div>
+<?= $this->endSection() ?>
+
+<?= $this->section('scripts') ?>
+<script src="<?= base_url('assets/js/viz.js') ?>"></script>
 <?= $this->endSection() ?>

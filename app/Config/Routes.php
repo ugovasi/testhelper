@@ -80,6 +80,10 @@ $routes->group('admin', ['namespace' => 'App\Controllers\Admin', 'filter' => 'au
         $routes->post('datatable', 'BugController::datatable');
         $routes->get('form/(:num)', 'BugController::form/$1');
         $routes->post('update/(:num)', 'BugController::update/$1', ['filter' => 'permission:bug.update']);
+        // Allegare e togliere allegati: il controller ammette bug.update oppure esecuzioni.create.
+        $routes->post('allega/(:num)', 'BugController::allega/$1');
+        $routes->post('elimina-allegato/(:num)', 'BugController::eliminaAllegato/$1');
+        $routes->get('allegato/(:num)', 'BugController::allegato/$1');
     });
 
     $routes->group('log', ['filter' => 'permission:log.view'], static function (RouteCollection $routes) {

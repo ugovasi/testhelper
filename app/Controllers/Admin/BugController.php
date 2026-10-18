@@ -2,6 +2,7 @@
 
 namespace App\Controllers\Admin;
 
+use App\Libraries\AllegatiBug;
 use App\Libraries\EsecuzioneService;
 use App\Models\BugModel;
 
@@ -27,9 +28,12 @@ class BugController extends AdminCrudController
         ['data' => 'gravita_html', 'label' => 'Gravita', 'ordina' => 'bug.gravita', 'html' => true],
         ['data' => 'stato_html', 'label' => 'Stato', 'ordina' => 'bug.stato', 'html' => true],
         ['data' => 'assegnato_nome', 'label' => 'Assegnato a', 'ordina' => 'sv.nome'],
+        ['data' => 'allegati_html', 'label' => 'Allegati', 'ordina' => null, 'html' => true],
     ];
 
     protected array $ricerca = ['bug.titolo', 'bug.descrizione', 'pt.nome', 'pr.nome', 'sv.nome'];
+
+    protected array $script = ['assets/js/allegati.js'];
 
     private const BADGE_GRAVITA = ['bassa' => 'secondary', 'media' => 'info', 'alta' => 'warning', 'critica' => 'danger'];
 
@@ -60,6 +64,9 @@ class BugController extends AdminCrudController
 
     protected function preparaRiga(array $riga): array
     {
+        $n = (new AllegatiBug())->conteggi([(int) $riga['id']])[(int) $riga['id']] ?? 0;
+        $riga['allegati_html'] = $n > 0 ? '<i class="bi bi-paperclip"></i> ' . $n : '';
+
         $riga['origine'] = $riga['piano_nome'] . ' / ' . $riga['caso_titolo'] . ' / passaggio ' . $riga['passaggio_ordine'];
         $riga['gravita_html'] = '<span class="badge text-bg-' . (self::BADGE_GRAVITA[$riga['gravita']] ?? 'secondary') . '">'
             . esc(ucfirst($riga['gravita'])) . '</span>';
@@ -73,11 +80,90 @@ class BugController extends AdminCrudController
     {
         $bug = $this->model->conContesto()->where('bug.id', $record['id'])->get()->getRowArray();
 
+        $archivio = new AllegatiBug();
+
         return [
-            'bug'         => $bug,
-            'transizioni' => BugModel::TRANSIZIONI_SVILUPPATORE[$record['stato']] ?? [],
+            'bug'           => $bug,
+            'transizioni'   => BugModel::TRANSIZIONI_SVILUPPATORE[$record['stato']] ?? [],
             'puoAggiornare' => $this->haPermesso('bug.update'),
+            'allegati'      => $archivio->elenco((int) $record['id']),
+            'puoAllegare'   => $this->puoAllegare(),
+            'limiteAllegati' => AllegatiBug::limiteByte(),
         ];
+    }
+
+    /**
+     * Chi lavora il bug (sviluppatore) e chi lo segnala (tester) possono aggiungere e
+     * togliere allegati; chi puo' solo consultare no.
+     */
+    private function puoAllegare(): bool
+    {
+        return $this->haPermesso('bug.update') || $this->haPermesso('esecuzioni.create');
+    }
+
+    public function allega(int $id)
+    {
+        if (!$this->puoAllegare()) {
+            return $this->response->setStatusCode(403)->setJSON(['success' => false, 'message' => 'Non hai i permessi necessari per questa operazione.']);
+        }
+        if (!$this->model->find($id)) {
+            return $this->nonTrovato();
+        }
+
+        $archivio = new AllegatiBug();
+        $file     = AllegatiBug::soloCaricati($this->request->getFileMultiple('allegati'));
+
+        if ($file === []) {
+            return $this->response->setStatusCode(422)->setJSON(['success' => false, 'message' => 'Scegli almeno un file da allegare.']);
+        }
+
+        $errore = $archivio->valida($file);
+        if ($errore !== null) {
+            return $this->response->setStatusCode(422)->setJSON(['success' => false, 'message' => $errore]);
+        }
+
+        $n = $archivio->salva($id, $file, session()->get('user_id'));
+
+        return $this->response->setJSON(['success' => true, 'message' => $n === 1 ? 'Allegato aggiunto.' : "{$n} allegati aggiunti."]);
+    }
+
+    public function eliminaAllegato(int $allegatoId)
+    {
+        if (!$this->puoAllegare()) {
+            return $this->response->setStatusCode(403)->setJSON(['success' => false, 'message' => 'Non hai i permessi necessari per questa operazione.']);
+        }
+
+        if (!(new AllegatiBug())->elimina($allegatoId)) {
+            return $this->response->setStatusCode(404)->setJSON(['success' => false, 'message' => 'Allegato non trovato.']);
+        }
+
+        return $this->response->setJSON(['success' => true, 'message' => 'Allegato eliminato.']);
+    }
+
+    /**
+     * Immagini raster in linea (per le anteprime), tutto il resto come download.
+     * nosniff e CSP "sandbox" impediscono al browser di interpretare o eseguire il file.
+     */
+    public function allegato(int $allegatoId)
+    {
+        $archivio = new AllegatiBug();
+        $allegato = $archivio->trova($allegatoId);
+        $file     = $allegato ? $archivio->percorso($allegato) : null;
+
+        if ($allegato === null || !is_file($file)) {
+            return $this->response->setStatusCode(404)->setBody('Allegato non trovato.');
+        }
+
+        $inLinea = in_array(strtolower(pathinfo($allegato['nome_file'], PATHINFO_EXTENSION)), AllegatiBug::IMMAGINI, true);
+        $nome    = str_replace(['"', '\\', "\r", "\n"], '_', $allegato['nome_originale']);
+
+        return $this->response
+            ->setHeader('Content-Type', $allegato['mime'])
+            ->setHeader('Content-Disposition', ($inLinea ? 'inline' : 'attachment') . '; filename="' . $nome . '"')
+            ->setHeader('X-Content-Type-Options', 'nosniff')
+            ->setHeader('Content-Security-Policy', "default-src 'none'; sandbox")
+            ->setHeader('Cache-Control', 'private, max-age=3600')
+            ->setBody((string) file_get_contents($file));
     }
 
     public function update(int $id)

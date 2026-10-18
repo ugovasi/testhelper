@@ -242,7 +242,7 @@ MMD,
                 'passi'      => [
                     'Premi Passato, Fallito, Bloccato o Salta sul passaggio (quello evidenziato e il prossimo da fare).',
                     'Nella finestra indica data e ora (di default adesso, mai nel futuro) e il tempo impiegato in minuti, anche 0. Per "Salta" il tempo non serve.',
-                    'Se il passaggio fallisce compila il bug: titolo, descrizione, gravita e a chi assegnarlo.',
+                    'Se il passaggio fallisce compila il bug: titolo, descrizione, gravita e a chi assegnarlo. Puoi allegare screenshot o file (anche incollando con Ctrl+V).',
                     'Ogni tentativo resta nello storico. Con il link "modifica" puoi correggere tempo, note e data/ora; l\'esito invece non si cambia.',
                 ],
                 'diagrammi'  => [
@@ -329,10 +329,11 @@ MMD,
                 'intro'      => 'Un bug nasce sempre da un passaggio fallito e resta legato a quel passaggio. Si consulta da Test → Bug; il pulsante Dettaglio mostra il contesto completo (prodotto, piano, caso, passaggio, note del tester).',
                 'operazioni' => [
                     ['permesso' => 'bug.view', 'etichetta' => 'Consultare', 'descrizione' => 'Vedere l\'elenco dei bug e il dettaglio di ciascuno.'],
-                    ['permesso' => 'bug.update', 'etichetta' => 'Lavorare il bug', 'descrizione' => 'Prenderlo in carico e segnarlo come risolto, con una nota su cosa e stato corretto.'],
+                    ['permesso' => 'bug.update', 'etichetta' => 'Lavorare il bug', 'descrizione' => 'Prenderlo in carico e segnarlo come risolto, con una nota su cosa e stato corretto. Permette anche di aggiungere e togliere allegati.'],
+                    ['permesso' => 'esecuzioni.create', 'etichetta' => 'Allegare file', 'descrizione' => 'Aggiungere o togliere screenshot e file a un bug, dal dettaglio o al momento in cui lo apri.'],
                 ],
                 'passi'      => [
-                    'Apri il dettaglio del bug e leggi passaggio, risultato atteso e note del tester.',
+                    'Apri il dettaglio del bug e leggi passaggio, risultato atteso e note del tester; negli allegati trovi gli screenshot o i log.',
                     'Scegli "In lavorazione" quando inizi: se il bug non era assegnato, lo diventi tu.',
                     'Quando hai corretto, scegli "Risolto" e descrivi la correzione: il tester la vedra nella coda delle riverifiche.',
                     '"Chiuso" e "Riaperto" non si impostano a mano: li decide l\'esito della riverifica.',
@@ -353,7 +354,10 @@ stateDiagram-v2
   state "In lavorazione" as InLavorazione
 MMD,
                 ]],
-                'note'       => ['I bug non si creano ne si eliminano dall\'elenco: li apre il tester dal passaggio fallito.'],
+                'note'       => [
+                    'I bug non si creano ne si eliminano dall\'elenco: li apre il tester dal passaggio fallito.',
+                    'Allegati ammessi: immagini (png, jpg, gif, webp), pdf, txt, log, csv, json, zip, mp4, webm. Fino a 5 file per volta, 10 MB ciascuno (o meno, se il server e configurato con un limite piu basso).',
+                ],
             ],
             [
                 'id'         => 'chiusura',

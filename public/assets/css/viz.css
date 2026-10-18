@@ -1,0 +1,87 @@
+/*
+ * Grafici della dashboard. I colori sono ruoli (custom property) validati con lo script
+ * di validazione della palette: serie = blu slot 1, gravita' = rampa ordinale blu,
+ * stati = palette di stato fissa (sempre accompagnata da icona e testo nella legenda).
+ * Il tema scuro segue il meccanismo di Bootstrap ([data-bs-theme="dark"]): l'app oggi
+ * non lo attiva, ma se verra' attivato i grafici si adattano senza altre modifiche.
+ */
+.viz-root {
+    --series-1: #2a78d6;
+    --ord-1: #86b6ef; --ord-2: #3987e5; --ord-3: #1c5cab; --ord-4: #0d366b;
+    --st-good: #0ca30c; --st-warning: #fab219; --st-critical: #d03b3b;
+    --neutral: #c3c2b7;
+    --grid: #e1e0d9;
+    --ink-muted: #898781;
+    --surface: var(--bs-card-bg, #fff);
+}
+[data-bs-theme="dark"] .viz-root {
+    --series-1: #3987e5;
+    --ord-1: #184f95; --ord-2: #2a78d6; --ord-3: #5598e7; --ord-4: #86b6ef;
+    --neutral: #4a4a47;
+    --grid: #2c2c2a;
+    --ink-muted: #898781;
+    --surface: var(--bs-card-bg, #1a1a19);
+}
+
+.viz-root { font-family: system-ui, -apple-system, "Segoe UI", sans-serif; }
+.viz-section { text-transform: uppercase; letter-spacing: .04em; font-size: .75rem; color: var(--bs-secondary-color); margin: .25rem 0 .5rem; }
+
+/* Stat tile */
+.viz-tile { background: var(--surface); border: 1px solid var(--bs-border-color); border-radius: .5rem; padding: .6rem .8rem; height: 100%; }
+.viz-tile-label { color: var(--bs-secondary-color); font-size: .8rem; }
+.viz-tile-value { font-size: 1.6rem; font-weight: 600; line-height: 1.2; }
+.viz-tile-value.viz-hero { font-size: 3rem; line-height: 1.1; }
+.viz-tile-note { color: var(--bs-secondary-color); font-size: .75rem; }
+
+/* Figure */
+.viz-figure { background: var(--surface); border: 1px solid var(--bs-border-color); border-radius: .5rem; padding: .7rem .9rem; margin: 0; height: 100%; }
+.viz-head { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: .6rem; }
+.viz-sub, .viz-muted, .viz-empty { color: var(--bs-secondary-color); font-size: .8rem; }
+.viz-toggle { padding: 0; font-size: .8rem; text-decoration: none; }
+.viz-empty { margin: 1.5rem 0; text-align: center; }
+.viz-hit { cursor: default; outline-offset: 2px; }
+
+/* Barra impilata: 2px di superficie tra i segmenti, estremi arrotondati */
+.viz-stack { display: flex; gap: 2px; height: 22px; }
+.viz-seg { min-width: 2px; }
+.viz-seg:first-child { border-radius: 4px 0 0 4px; }
+.viz-seg:last-child { border-radius: 0 4px 4px 0; }
+.viz-seg:only-child { border-radius: 4px; }
+.viz-seg:hover, .viz-seg:focus-visible { filter: brightness(1.1); }
+.viz-legend { list-style: none; padding: 0; margin: .8rem 0 0; display: grid; gap: .25rem; }
+.viz-legend li { display: flex; align-items: center; gap: .4rem; }
+.viz-swatch { width: 10px; height: 10px; border-radius: 2px; flex: none; }
+.viz-legend strong { margin-left: auto; }
+
+/* Barre orizzontali */
+.viz-hbars { display: grid; gap: .5rem; }
+.viz-hrow { display: grid; grid-template-columns: 7.5rem 1fr; align-items: center; gap: .5rem; border-radius: .25rem; }
+.viz-hrow:hover, .viz-hrow:focus-visible { background: var(--bs-tertiary-bg); }
+.viz-hlabel { color: var(--bs-secondary-color); }
+.viz-htrack { display: flex; align-items: center; gap: .4rem; min-height: 18px; }
+.viz-hbar { height: 14px; border-radius: 0 4px 4px 0; flex: none; }
+.viz-hval { font-weight: 600; }
+
+/* Colonne per giorno: l'altezza del grafico include gia' la banda dell'asse x */
+.viz-plot { position: relative; height: 160px; margin-left: 28px; }
+.viz-gridline { position: absolute; left: 0; right: 0; border-top: 1px solid var(--grid); }
+.viz-tick { position: absolute; left: -28px; width: 22px; text-align: right; font-size: .7rem; color: var(--ink-muted); transform: translateY(50%); line-height: 1; }
+.viz-cols { position: absolute; inset: 0; display: flex; }
+.viz-col { flex: 1; height: 100%; display: flex; flex-direction: column; justify-content: flex-end; align-items: center; }
+.viz-bar { display: block; width: calc(100% - 4px); max-width: 24px; background: var(--series-1); border-radius: 4px 4px 0 0; }
+.viz-col:hover .viz-bar, .viz-col:focus-visible .viz-bar { filter: brightness(1.12); }
+.viz-barlabel { font-size: .75rem; font-weight: 600; margin-bottom: 2px; }
+.viz-xaxis { display: flex; margin-left: 28px; margin-top: 4px; }
+.viz-xaxis span { flex: 1; text-align: center; font-size: .7rem; color: var(--ink-muted); }
+.viz-xcaption { margin-left: 28px; text-align: center; font-size: .7rem; color: var(--ink-muted); }
+
+/* Tooltip: il valore guida, l'etichetta segue */
+.viz-tooltip { position: fixed; z-index: 2000; pointer-events: none; background: var(--bs-body-bg); color: var(--bs-body-color);
+    border: 1px solid var(--bs-border-color); border-radius: .375rem; padding: .4rem .6rem; font-size: .8rem; box-shadow: 0 2px 8px rgba(0, 0, 0, .12); max-width: 16rem; }
+.viz-tooltip-title { color: var(--bs-secondary-color); margin-bottom: .15rem; }
+.viz-tooltip-row strong { margin-right: .35rem; }
+.viz-tooltip-row span { color: var(--bs-secondary-color); }
+
+@media (max-width: 575.98px) {
+    .viz-hrow { grid-template-columns: 6rem 1fr; }
+}

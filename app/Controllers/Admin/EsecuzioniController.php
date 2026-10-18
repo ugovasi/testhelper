@@ -3,6 +3,7 @@
 namespace App\Controllers\Admin;
 
 use App\Controllers\BaseController;
+use App\Libraries\AllegatiBug;
 use App\Libraries\EsecuzioneService;
 use App\Libraries\PianoAvanzamento;
 use App\Models\UtenteModel;
@@ -43,6 +44,15 @@ class EsecuzioniController extends BaseController
 
         $dettaglioCaso = $db->table('casi_test')->where('id', $caso['caso_id'])->get()->getRowArray();
 
+        // Allegati dei bug di questo caso, per consultarli (es. in vista di una riverifica).
+        $allegatiPerBug = [];
+        $archivio = new AllegatiBug();
+        foreach ($caso['passaggi'] as $passaggio) {
+            if ($passaggio['bug'] !== null) {
+                $allegatiPerBug[(int) $passaggio['bug']['id']] = $archivio->elenco((int) $passaggio['bug']['id']);
+            }
+        }
+
         return view('admin/esecuzioni/caso', [
             'title'         => $caso['titolo'],
             'piano'         => $piano,
@@ -50,12 +60,23 @@ class EsecuzioniController extends BaseController
             'precondizioni' => $dettaglioCaso['precondizioni'],
             'sviluppatori'  => (new UtenteModel())->where('attivo', 1)->orderBy('nome')->findAll(),
             'chiuso'        => $piano['stato'] === 'chiuso',
+            'allegatiPerBug' => $allegatiPerBug,
+            'limiteAllegati' => AllegatiBug::limiteByte(),
         ]);
     }
 
     public function registra()
     {
         $post = $this->request->getPost();
+
+        // Gli allegati si controllano prima di registrare: un file non valido non deve
+        // lasciare un bug aperto senza gli screenshot che il tester voleva allegare.
+        $allegati = new AllegatiBug();
+        $file     = ($post['esito'] ?? '') === 'fallito' ? AllegatiBug::soloCaricati($this->request->getFileMultiple('allegati')) : [];
+        $erroreFile = $allegati->valida($file);
+        if ($erroreFile !== null) {
+            return $this->response->setStatusCode(422)->setJSON(['success' => false, 'message' => $erroreFile, 'errors' => ['allegati[]' => $erroreFile]]);
+        }
 
         $esito = $this->service->registra(
             (int) ($post['piano_caso_id'] ?? 0),
@@ -72,6 +93,11 @@ class EsecuzioniController extends BaseController
             session()->get('user_id'),
             $post['eseguito_il'] ?? null
         );
+
+        if ($esito['success'] && isset($esito['bug_id']) && $file !== []) {
+            $n = $allegati->salva($esito['bug_id'], $file, session()->get('user_id'));
+            $esito['message'] .= " Allegati salvati: {$n}.";
+        }
 
         return $this->response->setStatusCode($esito['success'] ? 200 : 422)->setJSON($esito);
     }

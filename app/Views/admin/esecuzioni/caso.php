@@ -8,6 +8,8 @@ $permessiUtente = session()->get('permessi') ?? [];
 // si fa sul server, quindi le due ore devono essere confrontabili anche con fusi diversi.
 $adesso = date('Y-m-d\TH:i:s');
 $puoEseguire    = in_array('esecuzioni.create', $permessiUtente, true) && !$chiuso;
+// Gli allegati si scaricano da BugController, che richiede bug.view.
+$puoVedereAllegati = in_array('bug.view', $permessiUtente, true);
 
 $badge = [
     'da_eseguire'     => ['secondary', 'Da eseguire'],
@@ -80,6 +82,14 @@ foreach ($caso['passaggi'] as $p) {
                                 <span class="text-muted">· Fix: <?= esc($p['bug']['note_risoluzione']) ?></span>
                             <?php endif; ?>
                         </div>
+                        <?php if ($puoVedereAllegati && ($allegatiPerBug[$p['bug']['id']] ?? []) !== []): ?>
+                            <div class="small">
+                                <i class="bi bi-paperclip"></i>
+                                <?php foreach ($allegatiPerBug[$p['bug']['id']] as $a): ?>
+                                    <a href="<?= site_url('admin/bug/allegato/' . $a['id']) ?>" target="_blank" rel="noopener" class="me-2"><?= esc($a['nome_originale']) ?></a>
+                                <?php endforeach; ?>
+                            </div>
+                        <?php endif; ?>
                     <?php endif; ?>
                 </div>
                 <?php if ($puoEseguire && $p['eseguibile']): ?>
@@ -123,6 +133,16 @@ foreach ($caso['passaggi'] as $p) {
                         <div class="mb-3">
                             <label for="note" class="form-label">Note</label>
                             <textarea name="note" id="note" class="form-control" rows="2"></textarea>
+                        </div>
+
+                        <div class="mb-3 d-none" id="bloccoAllegati">
+                            <label for="allegati" class="form-label"><i class="bi bi-paperclip"></i> Allegati (screenshot, log, ...)</label>
+                            <input type="file" class="form-control" name="allegati[]" id="allegati" multiple data-allegati-input
+                                   accept=".png,.jpg,.jpeg,.gif,.webp,.pdf,.txt,.log,.csv,.json,.zip,.mp4,.webm">
+                            <div class="form-text">
+                                Fino a <?= (int) \App\Libraries\AllegatiBug::MAX_FILE ?> file, max <?= (int) round($limiteAllegati / 1048576) ?> MB ciascuno.
+                                Puoi anche incollare uno screenshot con Ctrl+V.
+                            </div>
                         </div>
 
                         <div id="bloccoBug" class="d-none border-top pt-3">
@@ -202,6 +222,7 @@ foreach ($caso['passaggi'] as $p) {
 
 <?= $this->section('scripts') ?>
 <?php if ($puoEseguire): ?>
+<script src="<?= base_url('assets/js/allegati.js') ?>"></script>
 <script>
 (function () {
     const modalEl = document.getElementById('modalEsito');
@@ -233,6 +254,7 @@ foreach ($caso['passaggi'] as $p) {
             form.elements.eseguito_il.max = adessoLocale();
             document.getElementById('titoloEsito').textContent = 'Passaggio ' + btn.dataset.numero + ': ' + esito;
             document.getElementById('bloccoBug').classList.toggle('d-none', !(esito === 'fallito' && !haBug));
+            document.getElementById('bloccoAllegati').classList.toggle('d-none', esito !== 'fallito');
             document.getElementById('avvisoRiapertura').classList.toggle('d-none', !(esito === 'fallito' && haBug));
 
             // Il tempo impiegato si registra a ogni tentativo; per "salta" non serve.

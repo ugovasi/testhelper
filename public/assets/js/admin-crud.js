@@ -12,6 +12,20 @@
 const AdminCRUD = (function () {
     let currentToken = document.querySelector('meta[name="csrf-token"]')?.content || '';
 
+    /**
+     * Con security.regenerate il token cambia a ogni richiesta POST, comprese quelle
+     * AJAX delle DataTable: il campo nascosto dei form "classici" (es. il logout nella
+     * navbar) renderizzato al caricamento della pagina sarebbe scaduto. Prima di ogni
+     * invio lo riallineiamo al token piu' recente.
+     */
+    document.addEventListener('submit', (event) => {
+        const nome = document.querySelector('meta[name="csrf-name"]')?.content;
+        const campo = nome && event.target.querySelector?.(`input[type="hidden"][name="${nome}"]`);
+        if (campo && currentToken) {
+            campo.value = currentToken;
+        }
+    }, true);
+
     function csrfHeaders(extra) {
         return Object.assign(
             { 'X-Requested-With': 'XMLHttpRequest', 'X-CSRF-TOKEN': currentToken },
