@@ -32,6 +32,8 @@ class PianiTestController extends AdminCrudController
     protected array $ricerca = ['piani_test.nome', 'versioni.nome', 'prodotti.nome', 'ass.nome'];
     protected array $campi   = ['versione_id', 'nome', 'assegnatario_id', 'data_inizio', 'data_fine_prevista', 'quota_riverifica'];
 
+    protected array $script = ['assets/js/piani-scheda.js'];
+
     private readonly PianoAvanzamento $avanzamento;
 
     public function __construct()
@@ -67,8 +69,46 @@ class PianiTestController extends AdminCrudController
 
     protected function azioniExtra(array $riga): string
     {
-        return '<a class="btn btn-outline-secondary" href="' . esc(site_url('admin/piani/dettaglio/' . $riga['id']), 'attr')
-            . '" title="Cruscotto"><i class="bi bi-bar-chart-line"></i></a>';
+        return '<button type="button" class="btn btn-outline-secondary" data-piano-scheda data-url="'
+            . esc(site_url('admin/piani/scheda/' . $riga['id']), 'attr')
+            . '" title="Dati del piano e passaggi"><i class="bi bi-eye"></i></button>'
+            . '<a class="btn btn-outline-secondary" href="' . esc(site_url('admin/piani/dettaglio/' . $riga['id']), 'attr')
+            . '" title="Cruscotto"><i class="bi bi-bar-chart-line"></i></a>'
+            . '<a class="btn btn-outline-secondary" target="_blank" rel="noopener" href="' . esc(site_url('admin/piani/report/' . $riga['id']), 'attr')
+            . '" title="Report stampabile"><i class="bi bi-printer"></i></a>';
+    }
+
+    /**
+     * Scheda di sola lettura del piano: dati in cima, poi i casi con i loro passaggi
+     * (azione, risultato atteso, tempo stimato). Html pronto per la modale.
+     */
+    public function scheda(int $id)
+    {
+        $caricato = $this->avanzamento->carica($id);
+
+        if ($caricato === null) {
+            return $this->nonTrovato();
+        }
+
+        $piano = db_connect()->table('piani_test p')
+            ->select('p.*, v.nome as versione_nome, pr.nome as prodotto_nome, u.nome as assegnatario_nome, '
+                . 'creatore.nome as creato_da_nome, modificatore.nome as modificato_da_nome')
+            ->join('versioni v', 'v.id = p.versione_id')
+            ->join('prodotti pr', 'pr.id = v.prodotto_id')
+            ->join('utenti u', 'u.id = p.assegnatario_id', 'left')
+            ->join('utenti creatore', 'creatore.id = p.created_by', 'left')
+            ->join('utenti modificatore', 'modificatore.id = p.updated_by', 'left')
+            ->where('p.id', $id)
+            ->get()->getRowArray();
+
+        return $this->response->setJSON([
+            'success' => true,
+            'html'    => view('admin/piani/_scheda', [
+                'piano'    => $piano,
+                'casi'     => $caricato['casi'],
+                'metriche' => $caricato['metriche'],
+            ], ['debug' => false]),
+        ]);
     }
 
     protected function datiForm(?array $record): array
@@ -165,6 +205,50 @@ class PianiTestController extends AdminCrudController
             'piano'    => $piano,
             'casi'     => $caricato['casi'],
             'metriche' => $caricato['metriche'],
+        ]);
+    }
+
+    /**
+     * Report stampabile del piano (si salva in PDF con "Stampa" del browser): dati del
+     * piano, riepilogo, dettaglio di ogni passaggio con i suoi tentativi e i bug.
+     */
+    public function report(int $id)
+    {
+        $caricato = $this->avanzamento->carica($id);
+
+        if ($caricato === null) {
+            return redirect()->to(site_url('admin/piani'))->with('error', 'Piano non trovato.');
+        }
+
+        $db = db_connect();
+
+        $piano = $db->table('piani_test p')
+            ->select('p.*, v.nome as versione_nome, pr.nome as prodotto_nome, u.nome as assegnatario_nome, creatore.nome as creato_da_nome')
+            ->join('versioni v', 'v.id = p.versione_id')
+            ->join('prodotti pr', 'pr.id = v.prodotto_id')
+            ->join('utenti u', 'u.id = p.assegnatario_id', 'left')
+            ->join('utenti creatore', 'creatore.id = p.created_by', 'left')
+            ->where('p.id', $id)
+            ->get()->getRowArray();
+
+        $bug = $db->table('bug b')
+            ->select('b.*, sv.nome as assegnato_nome, c.titolo as caso_titolo, pa.ordine as passaggio_ordine')
+            ->join('esecuzioni_passaggio e', 'e.id = b.esecuzione_origine_id')
+            ->join('piano_casi pc', 'pc.id = e.piano_caso_id')
+            ->join('casi_test c', 'c.id = pc.caso_id')
+            ->join('passaggi pa', 'pa.id = e.passaggio_id')
+            ->join('utenti sv', 'sv.id = b.assegnato_a', 'left')
+            ->where('pc.piano_id', $id)
+            ->orderBy('b.id')
+            ->get()->getResultArray();
+
+        return view('admin/piani/report', [
+            'title'    => 'Report - ' . $piano['nome'],
+            'piano'    => $piano,
+            'casi'     => $caricato['casi'],
+            'metriche' => $caricato['metriche'],
+            'bug'      => $bug,
+            'generatoDa' => session()->get('nome'),
         ]);
     }
 

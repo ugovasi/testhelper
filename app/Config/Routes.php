@@ -64,6 +64,9 @@ $routes->group('admin', ['namespace' => 'App\Controllers\Admin', 'filter' => 'au
     $crud($routes, 'casi', 'CasiTestController', 'casi');
     $crud($routes, 'piani', 'PianiTestController', 'piani');
 
+    $routes->get('casi/dettaglio/(:num)', 'CasiTestController::dettaglio/$1', ['filter' => 'permission:casi.view']);
+    $routes->get('piani/report/(:num)', 'PianiTestController::report/$1', ['filter' => 'permission:piani.view']);
+    $routes->get('piani/scheda/(:num)', 'PianiTestController::scheda/$1', ['filter' => 'permission:piani.view']);
     $routes->get('piani/dettaglio/(:num)', 'PianiTestController::dettaglio/$1', ['filter' => 'permission:piani.view']);
     $routes->post('piani/chiudi/(:num)', 'PianiTestController::chiudi/$1', ['filter' => 'permission:esecuzioni.create']);
 

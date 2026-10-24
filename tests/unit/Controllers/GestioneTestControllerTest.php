@@ -391,6 +391,153 @@ final class GestioneTestControllerTest extends CIUnitTestCase
         }
     }
 
+    public function testLaSchedaDelCasoMostraDatiInCimaEIPassaggiConLeStime(): void
+    {
+        $f = $this->creaPianoConUnCaso();
+        $casoId = (int) db_connect()->table('casi_test')->get()->getRow()->id;
+        db_connect()->table('casi_test')->where('id', $casoId)->update(['precondizioni' => 'Utente loggato']);
+        db_connect()->table('passaggi')->where('id', $f['passaggi'][1])->update(['risultato_atteso' => 'Coupon accettato', 'stima_minuti' => 9]);
+
+        $r = $this->come($f['utente'], ['casi.view'])->get("admin/casi/dettaglio/{$casoId}");
+        $r->assertOK();
+        $html = json_decode($r->getJSON(), true)['html'];
+
+        // Dati del test in cima...
+        foreach (['Applicazione coupon', 'ShopFlow / Checkout', 'Priorità media', 'Utente loggato', '1 piano di test', '19 min'] as $atteso) {
+            $this->assertStringContainsString($atteso, $html);
+        }
+        // ...e poi i passaggi, nell'ordine, con azione, risultato atteso e tempo.
+        $this->assertLessThan(strpos($html, 'Aggiungi prodotto'), strpos($html, 'Applicazione coupon'));
+        $this->assertLessThan(strpos($html, 'Inserisci coupon SCONTO10'), strpos($html, 'Aggiungi prodotto'));
+        $this->assertStringContainsString('Coupon accettato', $html);
+        $this->assertStringContainsString('9 min', $html);
+        $this->assertStringContainsString('Totale', $html);
+    }
+
+    public function testLaSchedaDelCasoRichiedePermessoEIdEsistente(): void
+    {
+        $f = $this->creaPianoConUnCaso();
+        $casoId = (int) db_connect()->table('casi_test')->get()->getRow()->id;
+
+        $this->assertSame(403, $this->come($f['utente'], ['piani.view'])->get("admin/casi/dettaglio/{$casoId}")->response()->getStatusCode());
+        $this->assertSame(404, $this->come($f['utente'], ['casi.view'])->get('admin/casi/dettaglio/999999')->response()->getStatusCode());
+    }
+
+    public function testOgniRigaDellElencoCasiHaIlPulsanteDiDettaglio(): void
+    {
+        $f = $this->creaPianoConUnCaso();
+        $casoId = (int) db_connect()->table('casi_test')->get()->getRow()->id;
+
+        $r = $this->come($f['utente'], ['casi.view'])->post('admin/casi/datatable', ['draw' => 1, 'start' => 0, 'length' => 10, 'search' => ['value' => '']] + $this->csrf());
+
+        $azioni = json_decode($r->getJSON(), true)['data'][0]['azioni'];
+        $this->assertStringContainsString('data-caso-dettaglio', $azioni);
+        $this->assertStringContainsString("casi&#x2F;dettaglio&#x2F;{$casoId}", $azioni, "l'indirizzo e nell'attributo data-url");
+        $this->assertStringNotContainsString('data-crud-action="edit"', $azioni, 'chi puo solo consultare non vede Modifica');
+    }
+
+    public function testLaSchedaDelPianoMostraDatiInCimaEPassaggiDeiCasi(): void
+    {
+        $f = $this->creaPianoConUnCaso();
+        db_connect()->table('passaggi')->where('id', $f['passaggi'][2])->update(['risultato_atteso' => 'Totale ridotto del 10%']);
+
+        $r = $this->come($f['utente'], ['piani.view'])->get("admin/piani/scheda/{$f['piano']}");
+        $r->assertOK();
+        $html = json_decode($r->getJSON(), true)['html'];
+
+        foreach (['Regressione 2.4', 'ShopFlow 2.4', 'Marta', '20/10/2026', '24/10/2026', '1 casi, 3 passaggi', '15 min', '17 min', '15%', 'Applicazione coupon'] as $atteso) {
+            $this->assertStringContainsString($atteso, $html, $atteso);
+        }
+        // Dati del piano prima, passaggi dopo.
+        $this->assertLessThan(strpos($html, 'Aggiungi prodotto'), strpos($html, 'Regressione 2.4'));
+        $this->assertLessThan(strpos($html, 'Aggiungi prodotto'), strpos($html, 'Tester'));
+        foreach (['Aggiungi prodotto', 'Inserisci coupon SCONTO10', 'Verifica totale ridotto del 10%', 'Totale ridotto del 10%', '5 min'] as $atteso) {
+            $this->assertStringContainsString($atteso, $html, $atteso);
+        }
+        $this->assertStringNotContainsString('modificato dopo', $html, 'stime coerenti: nessun avviso');
+    }
+
+    public function testLaSchedaDelPianoSegnalaSeLaLibreriaECambiataDopo(): void
+    {
+        $f = $this->creaPianoConUnCaso();
+        db_connect()->table('passaggi')->where('id', $f['passaggi'][0])->update(['stima_minuti' => 20]);
+
+        $r = $this->come($f['utente'], ['piani.view'])->get("admin/piani/scheda/{$f['piano']}");
+
+        $this->assertStringContainsString('modificato dopo', json_decode($r->getJSON(), true)['html']);
+    }
+
+    public function testLaSchedaDelPianoRichiedePermessoEIdEsistente(): void
+    {
+        $f = $this->creaPianoConUnCaso();
+
+        $this->assertSame(403, $this->come($f['utente'], ['casi.view'])->get("admin/piani/scheda/{$f['piano']}")->response()->getStatusCode());
+        $this->assertSame(404, $this->come($f['utente'], ['piani.view'])->get('admin/piani/scheda/999999')->response()->getStatusCode());
+    }
+
+    public function testOgniRigaDellElencoPianiHaIlPulsanteScheda(): void
+    {
+        $f = $this->creaPianoConUnCaso();
+
+        $r = $this->come($f['utente'], ['piani.view'])->post('admin/piani/datatable', ['draw' => 1, 'start' => 0, 'length' => 10, 'search' => ['value' => '']] + $this->csrf());
+
+        $azioni = json_decode($r->getJSON(), true)['data'][0]['azioni'];
+        $this->assertStringContainsString('data-piano-scheda', $azioni);
+        $this->assertStringContainsString("piani&#x2F;scheda&#x2F;{$f['piano']}", $azioni);
+        $this->assertStringContainsString("piani&#x2F;dettaglio&#x2F;{$f['piano']}", $azioni, 'il cruscotto resta disponibile');
+    }
+
+    public function testIlReportDelPianoContieneDatiRiepilogoPassaggiTentativiEBug(): void
+    {
+        $f = $this->creaPianoConUnCaso();
+        $s = new App\Libraries\EsecuzioneService();
+        $s->registra($f['pianoCaso'], $f['passaggi'][0], 'passato', 'ok al primo colpo', 3, null, $f['utente'], '2026-10-20 09:00:00');
+        $s->registra($f['pianoCaso'], $f['passaggi'][2], 'fallito', 'sconto 1%', 6, ['titolo' => 'Sconto errato', 'gravita' => 'alta', 'assegnato_a' => $f['utente']], $f['utente'], '2026-10-20 09:30:00');
+        $bugId = (int) db_connect()->table('bug')->get()->getRow()->id;
+        $s->cambiaStatoBug($bugId, 'risolto', 'formula corretta', $f['utente']);
+
+        $r = $this->come($f['utente'], ['piani.view'])->get("admin/piani/report/{$f['piano']}");
+        $r->assertOK();
+
+        foreach ([
+            'Report del piano di test', 'Regressione 2.4', 'ShopFlow 2.4', 'Marta', '20/10/2026', '24/10/2026', '15%',   // dati del piano
+            'Riepilogo', '33.3%', '1/3 passaggi chiusi', 'tentativi registrati', '9 min',                           // riepilogo
+            'Applicazione coupon', 'Aggiungi prodotto', 'Verifica totale ridotto del 10%', 'Da riverificare', 'Non eseguito', // passaggi
+            '#1 passato', 'ok al primo colpo', '20/10/2026 09:00', '#1 fallito', 'sconto 1%',                           // tentativi
+            'Bug del piano', 'Sconto errato', 'Correzione: formula corretta', 'Risolto',                                  // bug
+            'window.print()',
+        ] as $atteso) {
+            $r->assertSee($atteso);
+        }
+        // Pagina autonoma: niente barra laterale dell'applicazione.
+        $r->assertDontSee('app-sidebar');
+    }
+
+    public function testIlReportDiUnPianoSenzaBugDiceCheNonCeNe(): void
+    {
+        $f = $this->creaPianoConUnCaso();
+
+        $this->come($f['utente'], ['piani.view'])->get("admin/piani/report/{$f['piano']}")->assertSee('Nessun bug segnalato');
+    }
+
+    public function testIlReportRichiedePermessoEPianoEsistente(): void
+    {
+        $f = $this->creaPianoConUnCaso();
+
+        $this->assertSame(403, $this->come($f['utente'], ['casi.view'])->get("admin/piani/report/{$f['piano']}")->response()->getStatusCode());
+        $this->come($f['utente'], ['piani.view'])->get('admin/piani/report/999999')->assertRedirectTo(site_url('admin/piani'));
+    }
+
+    public function testIlPulsanteReportCompareNellElencoENelCruscotto(): void
+    {
+        $f = $this->creaPianoConUnCaso();
+
+        $elenco = $this->come($f['utente'], ['piani.view'])->post('admin/piani/datatable', ['draw' => 1, 'start' => 0, 'length' => 10, 'search' => ['value' => '']] + $this->csrf());
+        $this->assertStringContainsString("piani&#x2F;report&#x2F;{$f['piano']}", json_decode($elenco->getJSON(), true)['data'][0]['azioni']);
+
+        $this->come($f['utente'], ['piani.view'])->get("admin/piani/dettaglio/{$f['piano']}")->assertSee("admin/piani/report/{$f['piano']}");
+    }
+
     public function testLaDashboardMostraLeStatisticheSecondoIPermessi(): void
     {
         $f = $this->creaPianoConUnCaso();

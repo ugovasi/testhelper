@@ -60,6 +60,7 @@ class GuidaContenuti
                     'Lo sviluppatore prende in carico il bug e lo segna come risolto.',
                     'Il tester riesegue solo quel passaggio: se passa, il bug e il passaggio sono chiusi; se fallisce, il bug viene riaperto.',
                     'Quando tutti i passaggi sono chiusi il tester chiude il piano.',
+                    'La Dashboard riassume in numeri e grafici lo stato dei test e dei bug; dal piano si puo ottenere un report stampabile.',
                 ],
                 'diagrammi'  => [[
                     'titolo' => 'Il ciclo completo, per ruolo',
@@ -85,6 +86,37 @@ flowchart LR
 MMD,
                 ]],
                 'note'       => ['I ruoli sono indicativi: cio che puoi fare dipende solo dai permessi del tuo ruolo, elencati nelle sezioni seguenti.'],
+            ],
+            [
+                'id'         => 'dashboard',
+                'titolo'     => 'Dashboard e statistiche',
+                'icona'      => 'bi bi-speedometer2',
+                'intro'      => 'La Dashboard e la pagina iniziale: mostra riquadri e grafici sullo stato dei test e dei bug. Ogni gruppo compare solo se hai il permesso relativo; sotto ci sono i piani aperti con la barra di avanzamento.',
+                'operazioni' => [
+                    ['permesso' => 'piani.view', 'etichetta' => 'Statistiche dei test', 'descrizione' => 'Passaggi chiusi in percentuale, piani aperti, esecuzioni registrate, tempo impiegato; grafici sullo stato dei passaggi e sulle esecuzioni degli ultimi 14 giorni.'],
+                    ['permesso' => 'bug.view', 'etichetta' => 'Statistiche dei bug', 'descrizione' => 'Bug da correggere, in attesa di riverifica, chiusi, tempo medio di chiusura; grafici per stato e per gravita.'],
+                ],
+                'passi'      => [
+                    '"Passaggi chiusi" e il numero grande: quota dei passaggi chiusi nei piani ancora aperti.',
+                    '"Stato dei passaggi" li divide in chiusi, da riverificare, fermi (falliti o bloccati) e ancora da fare.',
+                    '"Esecuzioni per giorno" conta i tentativi registrati negli ultimi 14 giorni; passa il mouse (o usa la tastiera) su una colonna per vedere passati, falliti e altri.',
+                    'I "Bug da correggere" sono quelli aperti, in lavorazione o riaperti; quelli risolti aspettano la riverifica del tester.',
+                    'Il pulsante "Tabella" di ogni grafico mostra gli stessi numeri in forma di tabella.',
+                ],
+                'diagrammi'  => [[
+                    'titolo' => 'Da dove vengono i numeri',
+                    'codice' => <<<'MMD'
+flowchart LR
+  E["Esecuzioni registrate dal tester"] --> P["Stato dei passaggi nei piani aperti"]
+  E --> G["Esecuzioni per giorno, ultimi 14 giorni"]
+  E --> T["Tempo impiegato"]
+  P --> K["Passaggi chiusi in percentuale"]
+  B["Bug segnalati"] --> S["Bug per stato"]
+  B --> V["Bug da correggere per gravita"]
+  B --> M["Tempo medio di chiusura"]
+MMD,
+                ]],
+                'note'       => ['Le statistiche dei test riguardano i piani aperti; il tempo impiegato e le esecuzioni contano tutti i tentativi, riverifiche comprese.'],
             ],
             [
                 'id'         => 'prodotti',
@@ -123,7 +155,7 @@ MMD,
                 'icona'      => 'bi bi-list-check',
                 'intro'      => 'La libreria contiene i test riusabili. Una suite raggruppa i casi di un prodotto per area (es. Checkout); un caso e una sequenza di passaggi. Si gestiscono da Libreria → Suite e Libreria → Casi di test.',
                 'operazioni' => [
-                    ['permesso' => 'casi.view', 'etichetta' => 'Consultare', 'descrizione' => 'Vedere suite, casi e i loro passaggi.'],
+                    ['permesso' => 'casi.view', 'etichetta' => 'Consultare', 'descrizione' => 'Vedere suite e casi; il pulsante con l\'occhio mostra la scheda del caso con i dati e tutti i passaggi (azione, risultato atteso, tempo stimato).'],
                     ['permesso' => 'casi.create', 'etichetta' => 'Creare', 'descrizione' => 'Creare suite e casi di test, con almeno un passaggio.'],
                     ['permesso' => 'casi.edit', 'etichetta' => 'Modificare', 'descrizione' => 'Cambiare titolo, priorita e passaggi; aggiungere, riordinare o togliere passaggi.'],
                     ['permesso' => 'casi.delete', 'etichetta' => 'Eliminare', 'descrizione' => 'Rimuovere una suite vuota o un caso non incluso in nessun piano.'],
@@ -133,6 +165,7 @@ MMD,
                     'Crea il caso: titolo, suite, priorita e precondizioni.',
                     'Aggiungi i passaggi. Per ciascuno indica l\'azione, il risultato atteso e il tempo stimato in minuti (obbligatorio, almeno 1).',
                     'La stima del caso si calcola da sola come somma dei passaggi.',
+                    'Per rivedere un caso senza modificarlo usa il pulsante con l\'occhio: scheda con dati e passaggi.',
                 ],
                 'diagrammi'  => [
                     [
@@ -169,7 +202,7 @@ MMD,
                 'icona'      => 'bi bi-calendar-check',
                 'intro'      => 'Un piano collega una versione, un tester, un periodo e un insieme di casi della libreria. Si gestisce da Test → Piani di test.',
                 'operazioni' => [
-                    ['permesso' => 'piani.view', 'etichetta' => 'Consultare', 'descrizione' => 'Vedere l\'elenco dei piani con la barra di avanzamento e aprire il cruscotto di ciascuno.'],
+                    ['permesso' => 'piani.view', 'etichetta' => 'Consultare', 'descrizione' => 'Vedere l\'elenco dei piani con la barra di avanzamento, aprire la scheda con i dati del piano e i passaggi dei suoi casi (pulsante con l\'occhio) e il cruscotto di ciascuno.'],
                     ['permesso' => 'piani.create', 'etichetta' => 'Creare', 'descrizione' => 'Creare un piano scegliendo versione, tester, date, extra per le riverifiche e casi.'],
                     ['permesso' => 'piani.edit', 'etichetta' => 'Modificare', 'descrizione' => 'Cambiare dati e casi del piano finche non e chiuso.'],
                     ['permesso' => 'piani.delete', 'etichetta' => 'Eliminare', 'descrizione' => 'Eliminare un piano che non ha ancora esecuzioni.'],
@@ -179,6 +212,7 @@ MMD,
                     'Assegna il tester e indica data di inizio e fine prevista.',
                     'Imposta la percentuale di tempo extra per le riverifiche (predefinita 15%): si somma alla stima dei casi.',
                     'Seleziona i casi da includere. Ognuno porta con se la stima in minuti.',
+                    'Dall\'elenco, il pulsante con l\'occhio apre la scheda del piano: dati in cima e, per ogni caso, i passaggi con azione, risultato atteso e tempo stimato.',
                 ],
                 'diagrammi'  => [[
                     'titolo' => 'Stati di un piano',
@@ -229,6 +263,33 @@ flowchart TD
 MMD,
                 ]],
                 'note'       => ['I giorni sono di calendario, estremi inclusi. Senza passaggi chiusi la fine proiettata non e ancora calcolabile.'],
+            ],
+            [
+                'id'         => 'report',
+                'titolo'     => 'Report stampabile del piano',
+                'icona'      => 'bi bi-printer',
+                'intro'      => 'Il report raccoglie in una pagina pronta per la stampa tutto cio che riguarda un piano: serve per condividerlo o archiviarlo.',
+                'operazioni' => [
+                    ['permesso' => 'piani.view', 'etichetta' => 'Generare il report', 'descrizione' => 'Pulsante con la stampante nell\'elenco dei piani e nel cruscotto; si apre in una nuova scheda.'],
+                ],
+                'passi'      => [
+                    'Premi Report sulla riga del piano o in alto nel cruscotto.',
+                    'Il report contiene: dati del piano, riepilogo (avanzamento, ritardo, tempi, bug), ogni caso con i suoi passaggi e tutti i tentativi (esito, data, chi, minuti, note) e l\'elenco dei bug.',
+                    'Premi "Stampa / Salva come PDF": dalla finestra di stampa del browser scegli la stampante oppure "Salva come PDF".',
+                ],
+                'diagrammi'  => [[
+                    'titolo' => 'Dal piano al PDF',
+                    'codice' => <<<'MMD'
+flowchart TD
+  A["Elenco piani o cruscotto: pulsante Report"] --> B["Il report si apre in una nuova scheda"]
+  B --> C["Dati del piano, riepilogo, passaggi con tentativi e bug"]
+  C --> D["Stampa / Salva come PDF"]
+  D --> E{"Destinazione"}
+  E -->|"Stampante"| F["Copia su carta"]
+  E -->|"Salva come PDF"| G["File PDF da archiviare o inviare"]
+MMD,
+                ]],
+                'note'       => ['Il report fotografa lo stato al momento in cui lo apri: riaprilo per averlo aggiornato.'],
             ],
             [
                 'id'         => 'esecuzione',
@@ -339,6 +400,18 @@ MMD,
                     '"Chiuso" e "Riaperto" non si impostano a mano: li decide l\'esito della riverifica.',
                 ],
                 'diagrammi'  => [[
+                    'titolo' => 'Come si allega un file',
+                    'codice' => <<<'MMD'
+flowchart TD
+  A{"Quando allegare?"}
+  A -->|"alla segnalazione"| B["Nella finestra dell'esito Fallito scegli i file o incolla con Ctrl+V"]
+  A -->|"in seguito"| C["Dettaglio del bug: scegli i file, si caricano subito"]
+  B --> D{"Il file e valido?"}
+  C --> D
+  D -->|"no"| E["Rifiutato con un messaggio: tipo, contenuto o dimensione"]
+  D -->|"si"| F["Allegato salvato e visibile a chi puo vedere i bug"]
+MMD,
+                ], [
                     'titolo' => 'Stati di un bug',
                     'codice' => <<<'MMD'
 stateDiagram-v2

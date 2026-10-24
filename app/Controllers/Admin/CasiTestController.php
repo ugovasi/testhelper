@@ -26,7 +26,7 @@ class CasiTestController extends AdminCrudController
         ['data' => 'n_passaggi', 'label' => 'Passaggi', 'ordina' => null],
     ];
 
-    protected array $script = ['assets/js/casi-form.js'];
+    protected array $script = ['assets/js/casi-form.js', 'assets/js/casi-dettaglio.js'];
 
     protected array $ricerca = ['casi_test.titolo', 'suite.nome', 'prodotti.nome'];
     protected array $campi   = ['suite_id', 'titolo', 'precondizioni', 'priorita'];
@@ -59,6 +59,40 @@ class CasiTestController extends AdminCrudController
             . esc(ucfirst($riga['priorita'])) . '</span>';
 
         return $riga;
+    }
+
+    protected function azioniExtra(array $riga): string
+    {
+        return '<button type="button" class="btn btn-outline-secondary" data-caso-dettaglio data-url="'
+            . esc(site_url('admin/casi/dettaglio/' . $riga['id']), 'attr') . '" data-titolo="' . esc($riga['titolo'], 'attr')
+            . '" title="Dettaglio e passaggi"><i class="bi bi-eye"></i></button>';
+    }
+
+    /**
+     * Scheda di sola lettura del caso: dati in cima, poi i passaggi con azione, risultato
+     * atteso e tempo stimato. Stesso contratto JSON delle form (html pronto per la modale).
+     */
+    public function dettaglio(int $id)
+    {
+        $caso = $this->model->conCreatoreModificatore()
+            ->select('suite.nome as suite_nome, prodotti.nome as prodotto_nome')
+            ->join('suite', 'suite.id = casi_test.suite_id')
+            ->join('prodotti', 'prodotti.id = suite.prodotto_id')
+            ->where('casi_test.id', $id)
+            ->get()->getRowArray();
+
+        if ($caso === null) {
+            return $this->nonTrovato();
+        }
+
+        return $this->response->setJSON([
+            'success' => true,
+            'html'    => view('admin/casi/_dettaglio', [
+                'caso'     => $caso,
+                'passaggi' => $this->model->getPassaggi($id),
+                'piani'    => $this->model->utilizziInPiani($id),
+            ], ['debug' => false]),
+        ]);
     }
 
     protected function datiForm(?array $record): array

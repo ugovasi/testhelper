@@ -63,8 +63,9 @@ class PianoAvanzamento
             ->getResultArray();
 
         $esecuzioni = $db->table('esecuzioni_passaggio e')
-            ->select('e.*')
+            ->select('e.*, u.nome as eseguito_da_nome')
             ->join('piano_casi pc', 'pc.id = e.piano_caso_id')
+            ->join('utenti u', 'u.id = e.eseguito_da', 'left')
             ->where('pc.piano_id', $pianoId)
             ->orderBy('e.tentativo')
             ->get()

@@ -19,6 +19,7 @@ $data = static fn (?string $d) => $d ? date('d/m/Y', strtotime($d)) : '—';
 <?= $this->section('content') ?>
 <div class="mb-3">
     <a href="<?= site_url('admin/piani') ?>" class="btn btn-sm btn-outline-secondary"><i class="bi bi-arrow-left"></i> Piani</a>
+    <a href="<?= site_url('admin/piani/report/' . $piano['id']) ?>" target="_blank" rel="noopener" class="btn btn-sm btn-outline-secondary ms-1"><i class="bi bi-printer"></i> Report</a>
     <span class="ms-2"><?= view('admin/piani/_badge_stato', ['stato' => $piano['stato']], ['debug' => false]) ?></span>
     <span class="text-muted ms-2">
         <?= esc($piano['prodotto_nome'] . ' ' . $piano['versione_nome']) ?> ·

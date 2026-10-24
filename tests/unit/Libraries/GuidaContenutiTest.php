@@ -38,6 +38,21 @@ final class GuidaContenutiTest extends CIUnitTestCase
         $this->assertNotContains('prodotti', $sezioni);
     }
 
+    public function testDashboardEReportCompaionoSecondoIPermessi(): void
+    {
+        $this->assertNotContains('dashboard', $this->idSezioni([]));
+        $this->assertNotContains('report', $this->idSezioni(['bug.view']));
+
+        $this->assertContains('dashboard', $this->idSezioni(['bug.view']), 'le statistiche dei bug bastano a mostrare la sezione');
+        $this->assertContains('dashboard', $this->idSezioni(['piani.view']));
+        $this->assertContains('report', $this->idSezioni(['piani.view']));
+
+        $dashboard = current(array_filter(GuidaContenuti::sezioniPer(['bug.view']), static fn ($s) => $s['id'] === 'dashboard'));
+        $stato = array_column($dashboard['operazioni'], 'disponibile', 'permesso');
+        $this->assertFalse($stato['piani.view'], 'senza piani.view le statistiche dei test restano elencate ma bloccate');
+        $this->assertTrue($stato['bug.view']);
+    }
+
     public function testLeOperazioniSenzaPermessoRestanoElencateMaNonDisponibili(): void
     {
         $sezioni = GuidaContenuti::sezioniPer(['bug.view']);
